@@ -1,0 +1,56 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoinSocial - Лента</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <a href="index.html" style="text-decoration: none; color: inherit;">
+                    <span>🪙 CoinSocial</span>
+                </a>
+            </div>
+            <div class="nav">
+                <a href="feed.html" class="nav-button active">📱 Лента</a>
+                <a href="messages.html" class="nav-button">💬 Сообщения</a>
+                <a href="profile.html" class="nav-button">👤 Профиль</a>
+                <button class="nav-button" onclick="authManager.logout()">🚪 Выход</button>
+            </div>
+            <div class="coin-counter">
+                🪙 <span id="coinCount">0</span>
+            </div>
+        </div>
+
+        <div class="post-form">
+            <form id="postForm">
+                <textarea id="postContent"
+                          class="post-input"
+                          placeholder="Что у вас нового?"
+                          rows="3"></textarea>
+
+                <div class="post-actions">
+                    <label class="file-upload btn btn-secondary">
+                        📎 Медиа
+                        <input type="file" id="mediaInput" accept="image/*,video/*">
+                    </label>
+                    <button type="submit" class="btn btn-primary">Опубликовать (+5🪙)</button>
+                </div>
+
+                <input type="hidden" id="mediaUrl">
+                <input type="hidden" id="mediaType">
+
+                <div id="mediaPreview" class="media-preview"></div>
+            </form>
+        </div>
+
+        <div id="feed"></div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

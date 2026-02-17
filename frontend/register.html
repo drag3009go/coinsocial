@@ -1,0 +1,154 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoinSocial - Регистрация</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .debug-info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <a href="index.html" style="text-decoration: none; color: inherit;">
+                    <span>🪙 CoinSocial</span>
+                </a>
+            </div>
+            <div class="nav">
+                <a href="index.html" class="nav-button">🏠 Главная</a>
+                <a href="login.html" class="nav-button">🚪 Вход</a>
+            </div>
+        </div>
+
+        <!-- Отладочная информация -->
+        <div class="debug-info" id="debugInfo">
+            Загрузка...
+        </div>
+
+        <div class="auth-card">
+            <h1 class="auth-title">Регистрация</h1>
+
+            <form id="registerForm">
+                <div class="form-group">
+                    <label class="form-label">Имя пользователя</label>
+                    <input type="text" id="username" class="form-input" required placeholder="Придумайте имя пользователя">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="email" class="form-input" required placeholder="Ваш email">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Пароль</label>
+                    <input type="password" id="password" class="form-input" required placeholder="Не менее 6 символов" minlength="6">
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="submitBtn">
+                    Создать аккаунт
+                </button>
+            </form>
+
+            <div class="auth-link">
+                Уже есть аккаунт? <a href="login.html">Войдите</a>
+            </div>
+
+            <div id="message" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script>
+        // Обновляем отладочную информацию
+        function updateDebugInfo() {
+            const token = localStorage.getItem('token');
+            const user = localStorage.getItem('currentUser');
+            const debugInfo = document.getElementById('debugInfo');
+
+            debugInfo.innerHTML = `
+                    <strong>Отладочная информация:</strong><br>
+                    Токен: ${token ? '✅ Присутствует' : '❌ Отсутствует'}<br>
+                    Пользователь: ${user ? '✅ Загружен' : '❌ Отсутствует'}<br>
+                    Страница: ${window.location.href}
+                `;
+        }
+
+        // Проверяем статус аутентификации при загрузке
+        document.addEventListener('DOMContentLoaded', async function () {
+            console.log('Register page loaded');
+            updateDebugInfo();
+
+            // Если уже авторизован - сразу редирект
+            if (authManager.isAuthenticated()) {
+                console.log('User already authenticated, redirecting to feed...');
+                window.location.href = 'feed.html';
+                return;
+            }
+
+            // Обработчик формы регистрации
+            document.getElementById('registerForm').addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                const submitBtn = document.getElementById('submitBtn');
+                const messageDiv = document.getElementById('message');
+
+                const username = document.getElementById('username').value;
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+
+                // Валидация
+                if (!username || !email || !password) {
+                    messageDiv.innerHTML = '<div style="color: red; text-align: center;">Все поля обязательны для заполнения</div>';
+                    return;
+                }
+
+                if (password.length < 6) {
+                    messageDiv.innerHTML = '<div style="color: red; text-align: center;">Пароль должен быть не менее 6 символов</div>';
+                    return;
+                }
+
+                // Блокируем кнопку
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Регистрация...';
+                messageDiv.innerHTML = '<div style="color: blue; text-align: center;">Регистрация...</div>';
+
+                console.log('Submitting registration form...');
+
+                const result = await authManager.register(username, email, password);
+
+                if (result.success) {
+                    messageDiv.innerHTML = '<div style="color: green; text-align: center;">✅ Регистрация успешна! Перенаправление...</div>';
+                    console.log('Registration successful, waiting for redirect...');
+
+                    // Даем время увидеть сообщение
+                    setTimeout(() => {
+                        console.log('Executing redirect to feed.html');
+                        window.location.href = 'feed.html';
+                    }, 1000);
+
+                } else {
+                    messageDiv.innerHTML = `<div style="color: red; text-align: center;">❌ Ошибка: ${result.error}</div>`;
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Создать аккаунт';
+                    console.error('Registration failed:', result.error);
+                }
+
+                updateDebugInfo();
+            });
+
+            // Обновляем отладочную информацию каждые 2 секунды
+            setInterval(updateDebugInfo, 2000);
+        });
+    </script>
+</body>
+</html>

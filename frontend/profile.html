@@ -1,0 +1,71 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoinSocial - Профиль</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <a href="index.html" style="text-decoration: none; color: inherit;">
+                    <span>🪙 CoinSocial</span>
+                </a>
+            </div>
+            <div class="nav">
+                <a href="feed.html" class="nav-button">📱 Лента</a>
+                <a href="messages.html" class="nav-button">💬 Сообщения</a>
+                <a href="profile.html" class="nav-button active">👤 Профиль</a>
+                <button class="nav-button" onclick="authManager.logout()">🚪 Выход</button>
+            </div>
+            <div class="coin-counter">
+                🪙 <span id="coinCount">0</span>
+            </div>
+        </div>
+
+        <div class="profile-header">
+            <img id="profileAvatar" src="" alt="Аватар" class="profile-avatar">
+            <button id="changeAvatarBtn" class="btn btn-secondary btn-small" style="margin-bottom: 15px;">
+                📷 Сменить аватар
+            </button>
+            <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+
+            <h1 id="profileUsername" class="profile-username"></h1>
+            <p id="profileEmail" class="profile-email"></p>
+
+            <div class="profile-stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="profileCoins">0</div>
+                    <div class="stat-label">Монеты</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="profileJoinDate"></div>
+                    <div class="stat-label">Дата регистрации</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="post-form">
+            <h3>Редактировать профиль</h3>
+            <form id="editProfileForm">
+                <div class="form-group">
+                    <label class="form-label">Имя пользователя</label>
+                    <input type="text" id="editUsername" class="form-input" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="editEmail" class="form-input" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/profile.js"></script>
+</body>
+</html>

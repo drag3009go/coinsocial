@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Storage</title>
+</head>
+<body>
+    <h1>Очистка localStorage</h1>
+    <button onclick="clearStorage()">Очистить все данные</button>
+    <button onclick="goToRegister()">На регистрацию</button>
+
+    <script>
+        function clearStorage() {
+            localStorage.clear();
+            alert('LocalStorage очищен!');
+        }
+
+        function goToRegister() {
+            window.location.href = 'register.html';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoinSocial - Вход</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <a href="index.html" style="text-decoration: none; color: inherit;">
+                    <span>🪙 CoinSocial</span>
+                </a>
+            </div>
+            <div class="nav">
+                <a href="index.html" class="nav-button">🏠 Главная</a>
+                <a href="register.html" class="nav-button">📝 Регистрация</a>
+            </div>
+        </div>
+
+        <div class="auth-card">
+            <h1 class="auth-title">Вход в аккаунт</h1>
+
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="email" class="form-input" required placeholder="Ваш email">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Пароль</label>
+                    <input type="password" id="password" class="form-input" required placeholder="Ваш пароль">
+                </div>
+
+                <button type="submit" class="btn btn-primary">Войти</button>
+            </form>
+
+            <div class="auth-link">
+                Нет аккаунта? <a href="register.html">Зарегистрируйтесь</a>
+            </div>
+
+            <div id="message" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script>
+        // Перенаправление если уже авторизован
+        const token = localStorage.getItem('token');
+        const currentUser = localStorage.getItem('currentUser');
+
+        if (token && currentUser) {
+            window.location.href = 'feed.html';
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const messageDiv = document.getElementById('message');
+
+            const result = await authManager.login(email, password);
+
+            if (result.success) {
+                messageDiv.innerHTML = '<div style="color: green; text-align: center;">Вход успешен! Перенаправление...</div>';
+                setTimeout(() => {
+                    window.location.href = 'feed.html';
+                }, 1500);
+            } else {
+                messageDiv.innerHTML = `<div style="color: red; text-align: center;">Ошибка: ${result.error}</div>`;
+            }
+        });
+    </script>
+</body>
+</html>
