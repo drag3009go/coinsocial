@@ -11,9 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 # Импорты из модулей проекта (лежат в той же папке backend)
-from database import get_db_connection, init_db, hash_password, verify_password
-from auth import create_access_token, verify_token, get_current_user
-from models import UserCreate, UserLogin, Post, Comment, Message
+from backend.database import get_db_connection, init_db, hash_password, verify_password
+from backend.auth import create_access_token, verify_token, get_current_user
+from backend.models import UserCreate, UserLogin, Post, Comment, Message
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
