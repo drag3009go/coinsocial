@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt  # Используем jose.jwt вместо python-jwt
 from datetime import datetime, timedelta
 import sqlite3
-from database import get_db_connection
+from backend.database import get_db_connection
 import os
 from dotenv import load_dotenv
 
