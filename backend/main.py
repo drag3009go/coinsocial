@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
+from fastapi import FastAPI
 
 # Функция для удаления старых записей
 async def delete_old_posts_and_messages():
