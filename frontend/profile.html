@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CoinSocial - Профиль</title>
+    <title>Монеточка - Профиль</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -11,17 +11,22 @@
         <div class="header">
             <div class="logo">
                 <a href="index.html" style="text-decoration: none; color: inherit;">
-                    <span>🪙 CoinSocial</span>
+                    <span>🪙 Монеточка</span>
                 </a>
             </div>
             <div class="nav">
                 <a href="feed.html" class="nav-button">📱 Лента</a>
                 <a href="messages.html" class="nav-button">💬 Сообщения</a>
                 <a href="profile.html" class="nav-button active">👤 Профиль</a>
+                <a href="leaderboard.html" class="nav-button">🏆 Лидеры</a>
                 <button class="nav-button" onclick="authManager.logout()">🚪 Выход</button>
             </div>
             <div class="coin-counter">
                 🪙 <span id="coinCount">0</span>
+            </div>
+            <div class="online-indicator">
+                <button id="onlineBtn" class="online-btn" title="Кто в сети">🟢</button>
+                <div id="onlinePopup" class="online-popup"></div>
             </div>
         </div>
 
@@ -54,12 +59,10 @@
                     <label class="form-label">Имя пользователя</label>
                     <input type="text" id="editUsername" class="form-input" required>
                 </div>
-
                 <div class="form-group">
                     <label class="form-label">Email</label>
                     <input type="email" id="editEmail" class="form-input" required>
                 </div>
-
                 <button type="submit" class="btn btn-primary">Сохранить изменения</button>
             </form>
         </div>

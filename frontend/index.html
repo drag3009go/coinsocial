@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CoinSocial - Регистрация</title>
+    <title>Монеточка - Главная</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         .hero-section {
@@ -57,14 +57,23 @@
 </head>
 <body>
     <div class="container">
+        <!-- Шапка -->
+        <div class="header">
+            <div class="logo">
+                <a href="index.html" style="text-decoration: none; color: inherit;">
+                    <span>🪙 Монеточка</span>
+                </a>
+            </div>
+            <div class="nav">
+                <a href="register.html" class="nav-button">📝 Регистрация</a>
+                <a href="login.html" class="nav-button">🚪 Вход</a>
+            </div>
+        </div>
+
         <!-- Герой-секция -->
         <div class="hero-section">
-            <div class="logo" style="justify-content: center; margin-bottom: 20px;">
-                <span style="font-size: 2.5rem;">🪙 CoinSocial</span>
-            </div>
-            <h1 class="hero-title">Добро пожаловать!</h1>
-            <p class="hero-subtitle">Присоединяйтесь к социальной сети с собственной валютой</p>
-
+            <h1 class="hero-title">Добро пожаловать в Монеточку!</h1>
+            <p class="hero-subtitle">Социальная сеть с собственной валютой</p>
             <div class="quick-access">
                 <a href="register.html" class="btn btn-primary" style="padding: 15px 30px; font-size: 1.1rem;">
                     📝 Зарегистрироваться
@@ -82,19 +91,16 @@
                 <h3>Зарабатывайте монеты</h3>
                 <p>Получайте монеты за активность: посты, лайки, комментарии</p>
             </div>
-
             <div class="feature-card">
                 <div class="feature-icon">📱</div>
                 <h3>Общайтесь</h3>
                 <p>Публикуйте посты, делитесь фото и видео, общайтесь с друзьями</p>
             </div>
-
             <div class="feature-card">
                 <div class="feature-icon">💬</div>
                 <h3>Личные сообщения</h3>
                 <p>Общайтесь в реальном времени с другими пользователями</p>
             </div>
-
             <div class="feature-card">
                 <div class="feature-icon">👥</div>
                 <h3>Сообщество</h3>
@@ -122,13 +128,11 @@
         </div>
     </div>
 
+    <script src="js/auth.js"></script>
     <script>
         // Перенаправление если уже авторизован
-        const token = localStorage.getItem('token');
-        const currentUser = localStorage.getItem('currentUser');
-
-        if (token && currentUser) {
-            window.location.href = 'feed.html';
+        if (authManager.isAuthenticated()) {
+        window.location.href = 'feed.html';
         }
     </script>
 </body>

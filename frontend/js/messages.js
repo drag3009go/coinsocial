@@ -1,9 +1,10 @@
-class MessageManager {
+п»їclass MessageManager {
     constructor() {
         this.currentConversation = null;
         this.conversations = [];
         this.messages = [];
         this.autoRefreshInterval = null;
+        this.showAllUsers = false; // РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ
     }
 
     async init() {
@@ -13,7 +14,6 @@ class MessageManager {
     }
 
     setupEventListeners() {
-        // Отправка сообщения по Enter
         const messageInput = document.getElementById('messageInput');
         if (messageInput) {
             messageInput.addEventListener('keypress', (e) => {
@@ -23,11 +23,33 @@ class MessageManager {
             });
         }
 
-        // Поиск пользователей
         const searchInput = document.getElementById('userSearch');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
-                this.searchUsers(e.target.value);
+                if (!this.showAllUsers) {
+                    this.searchUsers(e.target.value);
+                } else {
+                    // Р•СЃР»Рё СЂРµР¶РёРј "РІСЃРµ РїРѕР»СЊР·РѕРІР°С‚РµР»Рё", РїРѕРёСЃРє РїРѕ РЅРёРј
+                    if (e.target.value.length >= 2) {
+                        this.searchUsers(e.target.value);
+                    } else {
+                        this.loadAllUsers();
+                    }
+                }
+            });
+        }
+
+        const toggleBtn = document.getElementById('toggleUsersBtn');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                this.showAllUsers = !this.showAllUsers;
+                toggleBtn.textContent = this.showAllUsers ? 'рџ’¬ Р”РёР°Р»РѕРіРё' : 'рџ‘Ґ Р’СЃРµ РїРѕР»СЊР·РѕРІР°С‚РµР»Рё';
+                if (this.showAllUsers) {
+                    this.loadAllUsers();
+                } else {
+                    this.renderConversations();
+                    document.getElementById('userSearch').value = '';
+                }
             });
         }
     }
@@ -40,7 +62,9 @@ class MessageManager {
 
             if (response.ok) {
                 this.conversations = await response.json();
-                this.renderConversations();
+                if (!this.showAllUsers) {
+                    this.renderConversations();
+                }
             } else {
                 throw new Error('Failed to load conversations');
             }
@@ -55,14 +79,14 @@ class MessageManager {
         if (!container) return;
 
         if (this.conversations.length === 0) {
-            container.innerHTML = '<div class="loading">Нет сообщений</div>';
+            container.innerHTML = '<div class="loading">РќРµС‚ СЃРѕРѕР±С‰РµРЅРёР№</div>';
             return;
         }
 
         container.innerHTML = this.conversations.map(conv => `
             <div class="conversation-item ${this.currentConversation === conv.user_id ? 'active' : ''}" 
                  onclick="messageManager.selectConversation('${conv.user_id}')">
-                <img src="${conv.avatar_url ? API_BASE + conv.avatar_url : '/assets/default-avatar.png'}" 
+                <img src="${conv.avatar_url ? API_BASE + conv.avatar_url : 'default-avatar.png'}" 
                      alt="${conv.username}" class="avatar">
                 <div class="conversation-info">
                     <div class="username">${conv.username}</div>
@@ -89,14 +113,14 @@ class MessageManager {
             if (conv) {
                 header.innerHTML = `
                     <div class="user-info">
-                        <img src="${conv.avatar_url ? API_BASE + conv.avatar_url : '/assets/default-avatar.png'}" 
+                        <img src="${conv.avatar_url ? API_BASE + conv.avatar_url : 'default-avatar.png'}" 
                              alt="${conv.username}" class="avatar">
                         <div class="username">${conv.username}</div>
                     </div>
                 `;
             }
         } else {
-            header.innerHTML = '<div>Выберите диалог</div>';
+            header.innerHTML = '<div>Р’С‹Р±РµСЂРёС‚Рµ РґРёР°Р»РѕРі</div>';
         }
     }
 
@@ -131,7 +155,6 @@ class MessageManager {
             </div>
         `).join('');
 
-        // Прокручиваем вниз
         container.scrollTop = container.scrollHeight;
     }
 
@@ -154,7 +177,7 @@ class MessageManager {
             if (response.ok) {
                 input.value = '';
                 await this.loadMessages(this.currentConversation);
-                await this.loadConversations(); // Обновляем список диалогов
+                await this.loadConversations();
             } else {
                 throw new Error('Failed to send message');
             }
@@ -177,29 +200,43 @@ class MessageManager {
 
             if (response.ok) {
                 const users = await response.json();
-                this.renderSearchResults(users);
+                this.renderUserList(users);
             }
         } catch (error) {
             console.error('Error searching users:', error);
         }
     }
 
-    renderSearchResults(users) {
+    async loadAllUsers() {
+        try {
+            const response = await fetch(`${API_BASE}/users`, {
+                headers: authManager.getAuthHeaders()
+            });
+            if (response.ok) {
+                const users = await response.json();
+                this.renderUserList(users);
+            }
+        } catch (error) {
+            console.error('Error loading users:', error);
+        }
+    }
+
+    renderUserList(users) {
         const container = document.getElementById('searchResults');
         if (!container) return;
 
         if (users.length === 0) {
-            container.innerHTML = '<div class="loading">Пользователи не найдены</div>';
+            container.innerHTML = '<div class="loading">РќРµС‚ РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№</div>';
             return;
         }
 
         container.innerHTML = users.map(user => `
             <div class="conversation-item" onclick="messageManager.startNewConversation('${user.id}')">
-                <img src="${user.avatar_url ? API_BASE + user.avatar_url : '/assets/default-avatar.png'}" 
+                <img src="${user.avatar_url ? API_BASE + user.avatar_url : 'default-avatar.png'}" 
                      alt="${user.username}" class="avatar">
                 <div class="conversation-info">
                     <div class="username">${user.username}</div>
-                    <div class="last-message">${user.coins} монет</div>
+                    <div class="last-message">${user.coins} РјРѕРЅРµС‚</div>
                 </div>
             </div>
         `).join('');
@@ -210,7 +247,6 @@ class MessageManager {
         document.getElementById('userSearch').value = '';
         document.getElementById('searchResults').innerHTML = '';
 
-        // Добавляем пользователя в список диалогов если его там нет
         if (!this.conversations.find(c => c.user_id === userId)) {
             const userResponse = await fetch(`${API_BASE}/users/${userId}`, {
                 headers: authManager.getAuthHeaders()
@@ -222,7 +258,7 @@ class MessageManager {
                     user_id: user.id,
                     username: user.username,
                     avatar_url: user.avatar_url,
-                    last_message: 'Новый диалог',
+                    last_message: 'РќРѕРІС‹Р№ РґРёР°Р»РѕРі',
                     timestamp: new Date().toISOString(),
                     unread_count: 0
                 });
@@ -240,7 +276,7 @@ class MessageManager {
                 this.loadMessages(this.currentConversation);
             }
             this.loadConversations();
-        }, 3000); // Обновляем каждые 3 секунды
+        }, 3000);
     }
 
     stopAutoRefresh() {
@@ -275,19 +311,14 @@ class MessageManager {
         errorDiv.style.top = '20px';
         errorDiv.style.right = '20px';
         errorDiv.style.zIndex = '1000';
-
         document.body.appendChild(errorDiv);
-
-        setTimeout(() => {
-            errorDiv.remove();
-        }, 5000);
+        setTimeout(() => errorDiv.remove(), 5000);
     }
 }
 
 const messageManager = new MessageManager();
 
-// Инициализация менеджера сообщений
 document.addEventListener('DOMContentLoaded', async function () {
-    await authManager.checkAuth();
+    await authManager.init();
     messageManager.init();
 });

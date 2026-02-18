@@ -1,15 +1,14 @@
 from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt  # Используем jose.jwt вместо python-jwt
+from jose import JWTError, jwt
 from datetime import datetime, timedelta
-import sqlite3
-from backend.database import get_db_connection
+from database import get_db_connection
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dfjsfwkc4if9wdnewdhjewrf3f9tr834ynf3yr834yr839yr934yf5r89q")
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 дней
 
@@ -52,11 +51,13 @@ def get_current_user(user_id: str = Depends(verify_token)):
     cursor = conn.cursor()
     cursor.execute("SELECT id, username, email, avatar_url, coins FROM users WHERE id = ?", (user_id,))
     user = cursor.fetchone()
-    conn.close()
-    
     if not user:
+        conn.close()
         raise HTTPException(status_code=404, detail="User not found")
-    
+    # Обновляем время последней активности
+    cursor.execute("UPDATE users SET last_active = ? WHERE id = ?", (datetime.now().isoformat(), user_id))
+    conn.commit()
+    conn.close()
     return {
         "id": user[0],
         "username": user[1],

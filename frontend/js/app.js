@@ -12,11 +12,11 @@
         await authManager.init();
         await this.loadFeed();
         this.setupEventListeners();
+        this.startAutoRefresh();
         authManager.updateUI();
     }
 
     setupEventListeners() {
-        // Бесконечная прокрутка
         window.addEventListener('scroll', () => {
             if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
                 this.loadMore();
@@ -84,6 +84,17 @@
     }
 
     createPostElement(post) {
+        const isOwner = authManager.getCurrentUser()?.id === post.user_id;
+        const menuHtml = isOwner ? `
+            <div class="post-menu">
+                ⋮
+                <div class="post-menu-content">
+                    <button onclick="app.editPost('${post.id}')">✏️ Редактировать</button>
+                    <button onclick="app.deletePost('${post.id}')">🗑️ Удалить</button>
+                </div>
+            </div>
+        ` : '';
+
         const mediaHtml = post.media_url ? `
             <div class="post-media-container">
                 ${post.media_type === 'video' ?
@@ -104,9 +115,10 @@
                             <div class="timestamp">${this.formatDate(post.timestamp)}</div>
                         </div>
                     </div>
+                    ${menuHtml}
                 </div>
                 
-                <div class="post-content">${this.escapeHtml(post.content)}</div>
+                <div class="post-content" id="post-content-${post.id}">${this.escapeHtml(post.content)}</div>
                 
                 ${mediaHtml}
                 
@@ -161,8 +173,6 @@
             alert('Ошибка: пользователь не найден');
             return;
         }
-
-        console.log(`🔄 Creating post: ${content}`);
 
         try {
             const response = await fetch(`${API_BASE}/posts`, {
@@ -345,6 +355,10 @@
         const file = event.target.files[0];
         if (!file) return;
 
+        const preview = document.getElementById('mediaPreview');
+        preview.innerHTML = '<div class="spinner"></div>';
+        preview.style.display = 'block';
+
         const formData = new FormData();
         formData.append('file', file);
 
@@ -362,20 +376,79 @@
                 document.getElementById('mediaUrl').value = result.media_url;
                 document.getElementById('mediaType').value = result.media_type;
 
-                const preview = document.getElementById('mediaPreview');
                 if (result.media_type === 'video') {
                     preview.innerHTML = `<video src="${API_BASE}${result.media_url}" controls class="post-media"></video>`;
                 } else {
                     preview.innerHTML = `<img src="${API_BASE}${result.media_url}" alt="Media preview" class="post-media">`;
                 }
-                preview.style.display = 'block';
             } else {
                 throw new Error('Failed to upload media');
             }
         } catch (error) {
             console.error('Error uploading media:', error);
+            preview.innerHTML = '<div class="error">Ошибка загрузки</div>';
             this.showError('Failed to upload media');
         }
+    }
+
+    async editPost(postId) {
+        const currentContent = document.getElementById(`post-content-${postId}`).innerText;
+        const newContent = prompt('Введите новый текст поста:', currentContent);
+        if (!newContent || newContent.trim() === '') return;
+
+        try {
+            const response = await fetch(`${API_BASE}/posts/${postId}`, {
+                method: 'PUT',
+                headers: authManager.getAuthHeaders(),
+                body: JSON.stringify({ content: newContent.trim() })
+            });
+
+            if (response.ok) {
+                this.showSuccess('Пост обновлён');
+                this.posts = [];
+                this.offset = 0;
+                this.hasMore = true;
+                await this.loadFeed();
+            } else {
+                throw new Error('Failed to update post');
+            }
+        } catch (error) {
+            console.error('Error editing post:', error);
+            this.showError('Ошибка при редактировании');
+        }
+    }
+
+    async deletePost(postId) {
+        if (!confirm('Удалить пост?')) return;
+
+        try {
+            const response = await fetch(`${API_BASE}/posts/${postId}`, {
+                method: 'DELETE',
+                headers: authManager.getAuthHeaders()
+            });
+
+            if (response.ok) {
+                this.showSuccess('Пост удалён');
+                this.posts = this.posts.filter(p => p.id !== postId);
+                this.renderFeed();
+            } else {
+                throw new Error('Failed to delete post');
+            }
+        } catch (error) {
+            console.error('Error deleting post:', error);
+            this.showError('Ошибка при удалении');
+        }
+    }
+
+    startAutoRefresh() {
+        setInterval(async () => {
+            if (window.location.pathname.includes('feed.html')) {
+                this.posts = [];
+                this.offset = 0;
+                this.hasMore = true;
+                await this.loadFeed();
+            }
+        }, 15000); // каждые 15 секунд
     }
 
     formatDate(timestamp) {

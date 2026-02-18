@@ -1,4 +1,4 @@
-const API_BASE = 'https://coinsocial.onrender.com';
+const API_BASE = 'https://монеточка.onrender.com'; // ЗАМЕНИТЕ НА ВАШ ДОМЕН
 
 class AuthManager {
     constructor() {
@@ -9,20 +9,18 @@ class AuthManager {
 
     async init() {
         console.log('AuthManager init started');
-
         if (this.token) {
-            console.log('Token found, checking validity...');
             const isValid = await this.checkTokenValidity();
             if (isValid) {
                 console.log('Token is valid, user is authenticated');
                 this.updateUI();
+                this.setupOnlineButton();
                 return true;
             } else {
                 console.log('Token is invalid, clearing storage');
                 this.clearStorage();
             }
         }
-
         console.log('No valid token, user is not authenticated');
         this.redirectIfNeeded();
         return false;
@@ -51,32 +49,20 @@ class AuthManager {
         try {
             const response = await fetch(`${API_BASE}/register`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, email, password })
             });
-
-            console.log('Registration response status:', response.status);
-
             if (response.ok) {
                 const data = await response.json();
-                console.log('Registration successful, data:', data);
-
                 this.token = data.access_token;
                 localStorage.setItem('token', this.token);
-
                 await this.checkTokenValidity();
-
-                console.log('Registration complete, redirecting to feed...');
                 return { success: true, data };
             } else {
                 const errorData = await response.json();
-                console.error('Registration failed:', errorData);
                 return { success: false, error: errorData.detail || 'Registration failed' };
             }
         } catch (error) {
-            console.error('Registration network error:', error);
             return { success: false, error: 'Network error: ' + error.message };
         }
     }
@@ -86,31 +72,20 @@ class AuthManager {
         try {
             const response = await fetch(`${API_BASE}/login`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
             });
-
-            console.log('Login response status:', response.status);
-
             if (response.ok) {
                 const data = await response.json();
-                console.log('Login successful, data:', data);
-
                 this.token = data.access_token;
                 localStorage.setItem('token', this.token);
                 await this.checkTokenValidity();
-
-                console.log('Login complete, redirecting to feed...');
                 return { success: true, data };
             } else {
                 const errorData = await response.json();
-                console.error('Login failed:', errorData);
                 return { success: false, error: errorData.detail || 'Login failed' };
             }
         } catch (error) {
-            console.error('Login network error:', error);
             return { success: false, error: 'Network error: ' + error.message };
         }
     }
@@ -129,15 +104,11 @@ class AuthManager {
     }
 
     getAuthHeaders() {
+        const headers = { 'Content-Type': 'application/json' };
         if (this.token) {
-            return {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.token}`
-            };
+            headers['Authorization'] = `Bearer ${this.token}`;
         }
-        return {
-            'Content-Type': 'application/json'
-        };
+        return headers;
     }
 
     getCurrentUser() {
@@ -164,18 +135,8 @@ class AuthManager {
 
     updateUI() {
         const coinElement = document.getElementById('coinCount');
-        const userElement = document.getElementById('userInfo');
-
         if (coinElement && this.currentUser) {
             coinElement.textContent = this.currentUser.coins;
-        }
-
-        if (userElement && this.currentUser) {
-            userElement.innerHTML = `
-                <img src="${this.currentUser.avatar_url || 'default-avatar.png'}" 
-                     alt="${this.currentUser.username}" class="avatar-small">
-                <span>${this.currentUser.username}</span>
-            `;
         }
     }
 
@@ -191,17 +152,68 @@ class AuthManager {
         const isAuthPage = currentPage.includes('login.html') ||
             currentPage.includes('register.html') ||
             currentPage.includes('index.html');
-
         const isProtectedPage = currentPage.includes('feed.html') ||
             currentPage.includes('profile.html') ||
-            currentPage.includes('messages.html');
-
+            currentPage.includes('messages.html') ||
+            currentPage.includes('leaderboard.html');
         if (isProtectedPage && !this.isAuthenticated()) {
-            console.log('Redirecting to login from protected page');
             window.location.href = 'login.html';
         } else if (isAuthPage && this.isAuthenticated()) {
-            console.log('Redirecting to feed from auth page');
             window.location.href = 'feed.html';
+        }
+    }
+
+    // ---------- Методы для онлайн-пользователей ----------
+    async fetchOnlineUsers() {
+        try {
+            const response = await fetch(`${API_BASE}/online-users`, {
+                headers: this.getAuthHeaders()
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (error) {
+            console.error('Error fetching online users:', error);
+        }
+        return [];
+    }
+
+    async showOnlinePopup() {
+        const popup = document.getElementById('onlinePopup');
+        if (!popup) return;
+
+        if (popup.classList.contains('show')) {
+            popup.classList.remove('show');
+            setTimeout(() => { popup.innerHTML = ''; }, 200);
+        } else {
+            const users = await this.fetchOnlineUsers();
+            if (users.length === 0) {
+                popup.innerHTML = '<div class="online-user">Нет пользователей онлайн</div>';
+            } else {
+                popup.innerHTML = users.map(u => `
+                    <div class="online-user" onclick="messageManager.startNewConversation('${u.id}')">
+                        <img src="${u.avatar_url ? API_BASE + u.avatar_url : 'default-avatar.png'}">
+                        <span>${u.username}</span>
+                    </div>
+                `).join('');
+            }
+            popup.classList.add('show');
+        }
+    }
+
+    setupOnlineButton() {
+        const onlineBtn = document.getElementById('onlineBtn');
+        if (onlineBtn) {
+            onlineBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showOnlinePopup();
+            });
+            document.addEventListener('click', (e) => {
+                const popup = document.getElementById('onlinePopup');
+                if (popup && !e.target.closest('.online-indicator')) {
+                    popup.classList.remove('show');
+                }
+            });
         }
     }
 }
