@@ -1,12 +1,11 @@
 import os
 import bcrypt
-from datetime import datetime, timedelta
+from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from psycopg2 import sql
 
 def get_db_connection():
-    """Создаёт и возвращает соединение с PostgreSQL (Supabase)"""
+    """Создаёт и возвращает соединение с PostgreSQL"""
     DATABASE_URL = os.getenv("DATABASE_URL")
     if not DATABASE_URL:
         raise Exception("DATABASE_URL not set")

@@ -1,14 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
-from datetime import datetime
-
-class User(BaseModel):
-    id: str
-    username: str
-    email: str
-    avatar_url: Optional[str] = None
-    coins: int = 100
-    created_at: str
+from typing import Optional
 
 class UserCreate(BaseModel):
     username: str
@@ -25,7 +16,7 @@ class Post(BaseModel):
     username: str
     content: str
     media_url: Optional[str] = None
-    media_type: Optional[str] = None  # 'image', 'video', None
+    media_type: Optional[str] = None
     likes: int = 0
     dislikes: int = 0
     comments_count: int = 0

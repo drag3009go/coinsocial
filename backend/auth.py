@@ -2,7 +2,7 @@ from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-from database import get_db_connection
+from backend.database import get_db_connection
 import os
 from dotenv import load_dotenv
 
@@ -49,19 +49,19 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 def get_current_user(user_id: str = Depends(verify_token)):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, email, avatar_url, coins FROM users WHERE id = ?", (user_id,))
+    cursor.execute("SELECT id, username, email, avatar_url, coins FROM users WHERE id = %s", (user_id,))
     user = cursor.fetchone()
     if not user:
         conn.close()
         raise HTTPException(status_code=404, detail="User not found")
     # Обновляем время последней активности
-    cursor.execute("UPDATE users SET last_active = ? WHERE id = ?", (datetime.now().isoformat(), user_id))
+    cursor.execute("UPDATE users SET last_active = %s WHERE id = %s", (datetime.now().isoformat(), user_id))
     conn.commit()
     conn.close()
     return {
-        "id": user[0],
-        "username": user[1],
-        "email": user[2],
-        "avatar_url": user[3],
-        "coins": user[4]
+        "id": user["id"],
+        "username": user["username"],
+        "email": user["email"],
+        "avatar_url": user["avatar_url"],
+        "coins": user["coins"]
     }

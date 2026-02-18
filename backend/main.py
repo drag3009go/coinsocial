@@ -6,15 +6,14 @@ import asyncio
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, status, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
-# Импорты из модулей проекта
-from database import get_db_connection, init_db, hash_password, verify_password
-from auth import create_access_token, verify_token, get_current_user
-from models import UserCreate, UserLogin, Post, Comment, Message
+# Импорты с префиксом backend
+from backend.database import get_db_connection, init_db, hash_password, verify_password
+from backend.auth import create_access_token, verify_token, get_current_user
+from backend.models import UserCreate, UserLogin, Post, Comment, Message
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -554,10 +553,7 @@ async def upload_avatar(file: UploadFile = File(...), current_user: dict = Depen
     return {"avatar_url": avatar_url}
 
 # ---------- Подключение фронтенда ----------
-# Определяем путь к папке frontend (она находится на уровень выше backend)
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend")
-# Монтируем всю папку frontend на корень сайта
-# Параметр html=True позволяет автоматически отдавать index.html при запросе директории
 app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 
 # ---------- Запуск (для локальной разработки) ----------
