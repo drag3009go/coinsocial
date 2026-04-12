@@ -1,15 +1,37 @@
 import os
+import socket
 import bcrypt
 from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
 def get_db_connection():
-    """Создаёт и возвращает соединение с PostgreSQL"""
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    if not DATABASE_URL:
-        raise Exception("DATABASE_URL not set")
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    """Создаёт соединение с PostgreSQL, принудительно используя IPv4"""
+    host = os.getenv("PGHOST")
+    port = os.getenv("PGPORT", "5432")
+    dbname = os.getenv("PGDATABASE")
+    user = os.getenv("PGUSER")
+    password = os.getenv("PGPASSWORD")
+    sslmode = os.getenv("PGSSLMODE", "require")
+
+    # Принудительно резолвим IPv4, чтобы избежать проблем с IPv6
+    try:
+        addr_info = socket.getaddrinfo(host, int(port), socket.AF_INET, socket.SOCK_STREAM)
+        host_ipv4 = addr_info[0][4][0]
+        print(f"✅ Resolved {host} -> IPv4: {host_ipv4}")
+        host = host_ipv4
+    except Exception as e:
+        print(f"⚠️ IPv4 resolution failed, using original host: {e}")
+
+    conn = psycopg2.connect(
+        host=host,
+        port=port,
+        dbname=dbname,
+        user=user,
+        password=password,
+        sslmode=sslmode,
+        cursor_factory=RealDictCursor
+    )
     return conn
 
 def init_db():
@@ -101,7 +123,7 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Проверяет пароль с хешем"""
+    """Проверяет пароль"""
     try:
         return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
     except Exception:
