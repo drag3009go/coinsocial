@@ -6,7 +6,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 def get_db_connection():
-    """Создаёт соединение с PostgreSQL, принудительно используя IPv4"""
+    """Подключение к PostgreSQL через отдельные переменные окружения (IPv4 fixed)"""
     host = os.getenv("PGHOST")
     port = os.getenv("PGPORT", "5432")
     dbname = os.getenv("PGDATABASE")
@@ -35,11 +35,10 @@ def get_db_connection():
     return conn
 
 def init_db():
-    """Инициализация таблиц в PostgreSQL"""
+    """Инициализация таблиц (без изменений)"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Пользователи
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
@@ -52,8 +51,6 @@ def init_db():
             last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-
-    # Посты
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS posts (
             id TEXT PRIMARY KEY,
@@ -67,8 +64,6 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-
-    # Комментарии
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS comments (
             id TEXT PRIMARY KEY,
@@ -80,8 +75,6 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-
-    # Реакции
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS post_reactions (
             user_id TEXT NOT NULL,
@@ -93,8 +86,6 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-
-    # Сообщения
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
@@ -107,8 +98,6 @@ def init_db():
             FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-
-    # Индексы
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)')
@@ -119,11 +108,9 @@ def init_db():
     conn.close()
 
 def hash_password(password: str) -> str:
-    """Хеширует пароль"""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Проверяет пароль"""
     try:
         return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
     except Exception:
