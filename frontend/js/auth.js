@@ -1,4 +1,4 @@
-const API_BASE = 'https://монеточка.onrender.com'; // ЗАМЕНИТЕ НА ВАШ ДОМЕН
+const API_BASE = 'https://coinsocial.onrender.com';
 
 class AuthManager {
     constructor() {
@@ -163,7 +163,7 @@ class AuthManager {
         }
     }
 
-    // ---------- Методы для онлайн-пользователей ----------
+    // ---------- ГЊГҐГІГ®Г¤Г» Г¤Г«Гї Г®Г­Г«Г Г©Г­-ГЇГ®Г«ГјГ§Г®ГўГ ГІГҐГ«ГҐГ© ----------
     async fetchOnlineUsers() {
         try {
             const response = await fetch(`${API_BASE}/online-users`, {
@@ -188,7 +188,7 @@ class AuthManager {
         } else {
             const users = await this.fetchOnlineUsers();
             if (users.length === 0) {
-                popup.innerHTML = '<div class="online-user">Нет пользователей онлайн</div>';
+                popup.innerHTML = '<div class="online-user">ГЌГҐГІ ГЇГ®Г«ГјГ§Г®ГўГ ГІГҐГ«ГҐГ© Г®Г­Г«Г Г©Г­</div>';
             } else {
                 popup.innerHTML = users.map(u => `
                     <div class="online-user" onclick="messageManager.startNewConversation('${u.id}')">
