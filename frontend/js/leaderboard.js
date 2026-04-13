@@ -12,6 +12,8 @@ class Leaderboard {
             console.error('Error loading leaderboard:', error);
         }
     }
+}
+    
 
     render(users) {
     const container = document.getElementById('leaderboard');
