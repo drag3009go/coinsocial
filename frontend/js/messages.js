@@ -179,32 +179,54 @@ class MessageManager {
         container.scrollTop = container.scrollHeight;
     }
 
-    async sendMessage() {
-        const input = document.getElementById('messageInput');
-        const content = input.value.trim();
-        if (!content || !this.currentConversation) return;
-
-        try {
-            const response = await fetch(`${API_BASE}/messages/send`, {
-                method: 'POST',
-                headers: authManager.getAuthHeaders(),
-                body: JSON.stringify({
-                    receiver_id: this.currentConversation,
-                    content: content
-                })
-            });
-            if (response.ok) {
-                input.value = '';
-                await this.loadMessages(this.currentConversation);
-                await this.loadConversations();
-            } else {
-                throw new Error('Failed to send message');
-            }
-        } catch (error) {
-            console.error('Error sending message:', error);
-            this.showError('Failed to send message');
-        }
+    showSendingIndicator() {
+    let indicator = document.getElementById('sendingIndicator');
+    if (!indicator) {
+        const container = document.getElementById('chatMessages');
+        indicator = document.createElement('div');
+        indicator.id = 'sendingIndicator';
+        indicator.className = 'message received';
+        indicator.innerHTML = '<div class="message-content">✏️ Печатает...</div>';
+        container.appendChild(indicator);
+        container.scrollTop = container.scrollHeight;
     }
+}
+
+hideSendingIndicator() {
+    const indicator = document.getElementById('sendingIndicator');
+    if (indicator) indicator.remove();
+}
+
+    async sendMessage() {
+    const input = document.getElementById('messageInput');
+    const content = input.value.trim();
+    if (!content || !this.currentConversation) return;
+
+    this.showSendingIndicator();
+    try {
+        const response = await fetch(`${API_BASE}/messages/send`, {
+            method: 'POST',
+            headers: authManager.getAuthHeaders(),
+            body: JSON.stringify({
+                receiver_id: this.currentConversation,
+                content: content
+            })
+        });
+        if (response.ok) {
+            input.value = '';
+            await this.loadMessages(this.currentConversation);
+            await this.loadConversations();
+        } else {
+            throw new Error('Failed to send message');
+        }
+    } catch (error) {
+        console.error('Error sending message:', error);
+        this.showError('Failed to send message');
+    } finally {
+        this.hideSendingIndicator();
+    }
+    }
+    
 
     async searchUsers(query) {
         if (query.length < 2) {
