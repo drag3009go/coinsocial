@@ -779,4 +779,28 @@ body {
     max-height: 80vh;
     object-fit: contain;
 }
+    .reply-btn {
+    background: none;
+    border: none;
+    color: #667eea;
+    font-size: 12px;
+    cursor: pointer;
+    margin-top: 5px;
+    padding: 0;
+}
+.reply-btn:hover {
+    text-decoration: underline;
+}
+.reply-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.reply-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    font-size: 13px;
+}
 }
