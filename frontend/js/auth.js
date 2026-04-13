@@ -1,5 +1,15 @@
 const API_BASE = 'https://coinsocial.onrender.com';
 
+// Функция для исправления URL аватара
+function getAvatarUrl(avatarUrl) {
+    if (!avatarUrl) return '/default-avatar.png';
+    // Старые локальные аватары (пропали) → заглушка
+    if (avatarUrl.startsWith('/uploads/avatars/')) return '/default-avatar.png';
+    return avatarUrl;
+}
+window.getAvatarUrl = getAvatarUrl;
+
+
 class AuthManager {
     constructor() {
         this.currentUser = null;
