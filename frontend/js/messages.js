@@ -13,6 +13,28 @@ class MessageManager {
         this.startAutoRefresh();
     }
 
+    // Включение поля ввода и кнопки
+    enableMessageInput() {
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendMsgBtn');
+        if (messageInput && sendButton) {
+            messageInput.disabled = false;
+            sendButton.disabled = false;
+            messageInput.placeholder = "Введите сообщение...";
+        }
+    }
+
+    // Выключение поля ввода и кнопки
+    disableMessageInput() {
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendMsgBtn');
+        if (messageInput && sendButton) {
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+            messageInput.placeholder = "Выберите диалог для общения";
+        }
+    }
+
     setupEventListeners() {
         const messageInput = document.getElementById('messageInput');
         if (messageInput) {
@@ -97,6 +119,8 @@ class MessageManager {
 
     async selectConversation(userId) {
         this.currentConversation = userId;
+        // Включаем поле ввода и кнопку сразу
+        this.enableMessageInput();
         this.renderConversations();
         await this.loadMessages(userId);
         this.updateChatHeader();
@@ -243,6 +267,8 @@ class MessageManager {
 
     async startNewConversation(userId) {
         this.currentConversation = userId;
+        // Включаем поле ввода и кнопку
+        this.enableMessageInput();
         document.getElementById('userSearch').value = '';
         document.getElementById('searchResults').innerHTML = '';
         if (!this.conversations.find(c => c.user_id === userId)) {
