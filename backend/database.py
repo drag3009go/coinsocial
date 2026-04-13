@@ -70,6 +70,15 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
+
+
+
+    # После создания таблицы comments
+cursor.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS parent_comment_id TEXT")
+cursor.execute("ALTER TABLE comments ADD CONSTRAINT fk_comments_parent FOREIGN KEY (parent_comment_id) REFERENCES comments(id) ON DELETE CASCADE")
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id)")
+
+
     # post_reactions
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS post_reactions (
