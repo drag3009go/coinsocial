@@ -17,18 +17,13 @@ class MessageManager {
 
     setupEventListeners() {
         const messageInput = document.getElementById('messageInput');
-        if (messageInput) {
-            messageInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') this.sendMessage();
-            });
-        }
+        if (messageInput) messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.sendMessage(); });
 
         const searchInput = document.getElementById('userSearch');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
-                if (!this.showAllUsers) {
-                    this.searchUsers(e.target.value);
-                } else {
+                if (!this.showAllUsers) this.searchUsers(e.target.value);
+                else {
                     if (e.target.value.length >= 2) this.searchUsers(e.target.value);
                     else this.loadAllUsers();
                 }
@@ -49,9 +44,7 @@ class MessageManager {
         }
 
         const sendBtn = document.getElementById('sendMsgBtn');
-        if (sendBtn) {
-            sendBtn.addEventListener('click', () => this.sendMessage());
-        }
+        if (sendBtn) sendBtn.addEventListener('click', () => this.sendMessage());
     }
 
     async loadConversations() {
@@ -62,11 +55,9 @@ class MessageManager {
             if (response.ok) {
                 this.conversations = await response.json();
                 if (!this.showAllUsers) this.renderConversations();
-            } else {
-                throw new Error('Failed to load conversations');
-            }
+            } else throw new Error('Failed to load conversations');
         } catch (error) {
-            console.error('Error loading conversations:', error);
+            console.error(error);
             this.showError('Failed to load conversations');
         }
     }
@@ -79,10 +70,8 @@ class MessageManager {
             return;
         }
         container.innerHTML = this.conversations.map(conv => `
-            <div class="conversation-item ${this.currentConversation === conv.user_id ? 'active' : ''}" 
-                 onclick="messageManager.selectConversation('${conv.user_id}')">
-                <img src="${conv.avatar_url ? API_BASE + conv.avatar_url : 'default-avatar.png'}" 
-                     alt="${conv.username}" class="avatar">
+            <div class="conversation-item ${this.currentConversation === conv.user_id ? 'active' : ''}" data-peer-id="${conv.user_id}">
+                <img src="${conv.avatar_url ? API_BASE + conv.avatar_url : 'default-avatar.png'}" class="avatar">
                 <div class="conversation-info">
                     <div class="username">${conv.username}</div>
                     <div class="last-message">${this.truncateText(conv.last_message, 30)}</div>
@@ -90,6 +79,9 @@ class MessageManager {
                 ${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count}</span>` : ''}
             </div>
         `).join('');
+        document.querySelectorAll('.conversation-item').forEach(item => {
+            item.addEventListener('click', () => this.selectConversation(item.dataset.peerId));
+        });
     }
 
     async selectConversation(userId) {
@@ -105,32 +97,20 @@ class MessageManager {
         if (this.currentConversation) {
             const conv = this.conversations.find(c => c.user_id === this.currentConversation);
             if (conv) {
-                header.innerHTML = `
-                    <div class="user-info">
-                        <img src="${conv.avatar_url ? API_BASE + conv.avatar_url : 'default-avatar.png'}" 
-                             alt="${conv.username}" class="avatar">
-                        <div class="username">${conv.username}</div>
-                    </div>
-                `;
+                header.innerHTML = `<div class="user-info"><img src="${conv.avatar_url ? API_BASE + conv.avatar_url : 'default-avatar.png'}" class="avatar"><div class="username">${conv.username}</div></div>`;
             }
-        } else {
-            header.innerHTML = '<div>Выберите диалог</div>';
-        }
+        } else header.innerHTML = '<div>Выберите диалог</div>';
     }
 
     async loadMessages(userId) {
         try {
-            const response = await fetch(`${API_BASE}/messages/${userId}`, {
-                headers: authManager.getAuthHeaders()
-            });
+            const response = await fetch(`${API_BASE}/messages/${userId}`, { headers: authManager.getAuthHeaders() });
             if (response.ok) {
                 this.messages = await response.json();
                 this.renderMessages();
-            } else {
-                throw new Error('Failed to load messages');
-            }
+            } else throw new Error('Failed to load messages');
         } catch (error) {
-            console.error('Error loading messages:', error);
+            console.error(error);
             this.showError('Failed to load messages');
         }
     }
@@ -140,15 +120,9 @@ class MessageManager {
         if (!container) return;
         const currentUser = authManager.getCurrentUser();
         if (!currentUser) return;
-
         container.innerHTML = this.messages.map(msg => {
             const isSent = msg.sender_id === currentUser.id;
-            return `
-                <div class="message ${isSent ? 'sent' : 'received'}">
-                    <div class="message-content">${this.escapeHtml(msg.content)}</div>
-                    <div class="message-time">${this.formatTime(msg.timestamp)}</div>
-                </div>
-            `;
+            return `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-content">${this.escapeHtml(msg.content)}</div><div class="message-time">${this.formatTime(msg.timestamp)}</div></div>`;
         }).join('');
         container.scrollTop = container.scrollHeight;
     }
@@ -157,25 +131,19 @@ class MessageManager {
         const input = document.getElementById('messageInput');
         const content = input.value.trim();
         if (!content || !this.currentConversation) return;
-
         try {
             const response = await fetch(`${API_BASE}/messages/send`, {
                 method: 'POST',
                 headers: authManager.getAuthHeaders(),
-                body: JSON.stringify({
-                    receiver_id: this.currentConversation,
-                    content: content
-                })
+                body: JSON.stringify({ receiver_id: this.currentConversation, content })
             });
             if (response.ok) {
                 input.value = '';
                 await this.loadMessages(this.currentConversation);
                 await this.loadConversations();
-            } else {
-                throw new Error('Failed to send message');
-            }
+            } else throw new Error('Failed to send message');
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error(error);
             this.showError('Failed to send message');
         }
     }
@@ -186,32 +154,22 @@ class MessageManager {
             return;
         }
         try {
-            const response = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(query)}`, {
-                headers: authManager.getAuthHeaders()
-            });
+            const response = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(query)}`, { headers: authManager.getAuthHeaders() });
             if (response.ok) {
                 const users = await response.json();
                 this.renderUserList(users);
-            } else {
-                console.error('Search failed with status:', response.status);
-            }
-        } catch (error) {
-            console.error('Error searching users:', error);
-        }
+            } else console.error('Search failed', response.status);
+        } catch (error) { console.error(error); }
     }
 
     async loadAllUsers() {
         try {
-            const response = await fetch(`${API_BASE}/users`, {
-                headers: authManager.getAuthHeaders()
-            });
+            const response = await fetch(`${API_BASE}/users`, { headers: authManager.getAuthHeaders() });
             if (response.ok) {
                 const users = await response.json();
                 this.renderUserList(users);
             }
-        } catch (error) {
-            console.error('Error loading users:', error);
-        }
+        } catch (error) { console.error(error); }
     }
 
     renderUserList(users) {
@@ -222,15 +180,17 @@ class MessageManager {
             return;
         }
         container.innerHTML = users.map(user => `
-            <div class="conversation-item" onclick="messageManager.startNewConversation('${user.id}')">
-                <img src="${user.avatar_url ? API_BASE + user.avatar_url : 'default-avatar.png'}" 
-                     alt="${user.username}" class="avatar">
+            <div class="conversation-item" data-peer-id="${user.id}">
+                <img src="${user.avatar_url ? API_BASE + user.avatar_url : 'default-avatar.png'}" class="avatar">
                 <div class="conversation-info">
                     <div class="username">${user.username}</div>
                     <div class="last-message">${user.coins} монет</div>
                 </div>
             </div>
         `).join('');
+        document.querySelectorAll('#searchResults .conversation-item').forEach(item => {
+            item.addEventListener('click', () => this.startNewConversation(item.dataset.peerId));
+        });
     }
 
     async startNewConversation(userId) {
@@ -238,9 +198,7 @@ class MessageManager {
         document.getElementById('userSearch').value = '';
         document.getElementById('searchResults').innerHTML = '';
         if (!this.conversations.find(c => c.user_id === userId)) {
-            const userResponse = await fetch(`${API_BASE}/users/${userId}`, {
-                headers: authManager.getAuthHeaders()
-            });
+            const userResponse = await fetch(`${API_BASE}/users/${userId}`, { headers: authManager.getAuthHeaders() });
             if (userResponse.ok) {
                 const user = await userResponse.json();
                 this.conversations.unshift({
@@ -260,49 +218,27 @@ class MessageManager {
 
     startAutoRefresh() {
         this.autoRefreshInterval = setInterval(() => {
-            if (this.currentConversation) {
-                this.loadMessages(this.currentConversation);
-            }
+            if (this.currentConversation) this.loadMessages(this.currentConversation);
             this.loadConversations();
         }, 3000);
     }
 
-    stopAutoRefresh() {
-        if (this.autoRefreshInterval) {
-            clearInterval(this.autoRefreshInterval);
-        }
-    }
+    stopAutoRefresh() { if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval); }
 
-    formatTime(timestamp) {
-        return new Date(timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    }
-
-    truncateText(text, maxLength) {
-        if (text.length <= maxLength) return text;
-        return text.substring(0, maxLength) + '...';
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
+    formatTime(timestamp) { return new Date(timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
+    truncateText(text, maxLength) { return text.length <= maxLength ? text : text.substring(0, maxLength) + '...'; }
+    escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
     showError(message) {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error';
         errorDiv.textContent = message;
-        errorDiv.style.position = 'fixed';
-        errorDiv.style.top = '20px';
-        errorDiv.style.right = '20px';
-        errorDiv.style.zIndex = '1000';
+        errorDiv.style.position = 'fixed'; errorDiv.style.top = '20px'; errorDiv.style.right = '20px'; errorDiv.style.zIndex = '1000';
         document.body.appendChild(errorDiv);
         setTimeout(() => errorDiv.remove(), 5000);
     }
 }
 
 const messageManager = new MessageManager();
-
 document.addEventListener('DOMContentLoaded', async function () {
     await authManager.init();
     messageManager.init();
