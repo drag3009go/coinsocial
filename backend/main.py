@@ -6,18 +6,18 @@ import asyncio
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
-
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-# Импорты с префиксом backend
-from backend.database import get_db_connection, init_db, hash_password, verify_password
+# Импорты из модулей проекта
+from backend.database import (
+    get_db_connection, init_db, hash_password, verify_password,
+    save_uploaded_file, delete_old_files
+)
 from backend.auth import create_access_token, verify_token, get_current_user
-from backend.models import UserCreate, UserLogin, Post, Comment, Message
-from backend.database import get_db_connection, init_db, hash_password, verify_password, save_uploaded_file, delete_old_files
+from backend.models import UserCreate, UserLogin
 from backend.storage import upload_file, init_storage_buckets, delete_file
-
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -25,24 +25,37 @@ logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
 async def delete_old_posts_and_messages():
-    """Фоновая задача: удалять посты и сообщения старше 64 часов"""
+    """Фоновая задача: удалять посты и сообщения старше 64 часов,
+       а также файлы старше 92 часов (кроме аватаров)."""
     while True:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cutoff = (datetime.now() - timedelta(hours=64)).isoformat()
+            cutoff_64 = (datetime.now() - timedelta(hours=64)).isoformat()
+            cutoff_92 = (datetime.now() - timedelta(hours=92)).isoformat()
 
-            # Удаляем старые посты (каскадно удалятся комментарии и реакции)
-            cursor.execute("DELETE FROM posts WHERE timestamp < %s", (cutoff,))
-            deleted_posts = cursor.rowcount
+            # 1. Удаляем старые посты (получаем их id)
+            cursor.execute("DELETE FROM posts WHERE timestamp < %s RETURNING id", (cutoff_64,))
+            deleted_post_ids = [row["id"] for row in cursor.fetchall()]
 
-            # Удаляем старые сообщения
-            cursor.execute("DELETE FROM messages WHERE timestamp < %s", (cutoff,))
-            deleted_messages = cursor.rowcount
+            # 2. Удаляем старые сообщения
+            cursor.execute("DELETE FROM messages WHERE timestamp < %s", (cutoff_64,))
+
+            # 3. Для каждого удалённого поста удаляем связанные файлы
+            for pid in deleted_post_ids:
+                cursor.execute("SELECT url FROM uploaded_files WHERE post_id = %s", (pid,))
+                files = cursor.fetchall()
+                for f in files:
+                    delete_file(f["url"])
+                cursor.execute("DELETE FROM uploaded_files WHERE post_id = %s", (pid,))
+
+            # 4. Удаляем старые файлы, не привязанные к постам (старше 92 часов)
+            #    (аватары не удаляются)
+            delete_old_files(92)
 
             conn.commit()
             conn.close()
-            logger.info(f"🧹 Cleanup: deleted {deleted_posts} old posts and {deleted_messages} old messages")
+            logger.info(f"🧹 Cleanup: deleted {len(deleted_post_ids)} old posts and related files")
         except Exception as e:
             logger.error(f"Error in cleanup task: {e}")
 
@@ -53,7 +66,6 @@ async def lifespan(app: FastAPI):
     # Запускаем фоновую задачу при старте
     task = asyncio.create_task(delete_old_posts_and_messages())
     yield
-    # Отменяем задачу при остановке
     task.cancel()
 
 # ---------- Создание приложения ----------
@@ -72,15 +84,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------- Папка для загруженных файлов ----------
-os.makedirs("uploads/images", exist_ok=True)
-os.makedirs("uploads/videos", exist_ok=True)
-os.makedirs("uploads/avatars", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
-# ---------- Инициализация базы данных ----------
+# ---------- Инициализация базы данных и хранилища ----------
 init_db()
-logger.info("✅ Database initialized")
+init_storage_buckets()
+logger.info("✅ Database and Storage initialized")
 
 # ---------- Публичные маршруты ----------
 @app.post("/register")
@@ -177,13 +184,16 @@ async def create_post(post_data: dict, current_user: dict = Depends(get_current_
         if not cursor.fetchone():
             conn.close()
             raise HTTPException(404, "User not found in database")
-        
+
         cursor.execute(
             "INSERT INTO posts (id, user_id, content, media_url, media_type, timestamp) VALUES (%s, %s, %s, %s, %s, %s)",
             (post_id, current_user["id"], content, media_url, media_type, datetime.now().isoformat())
         )
+        # Если есть media_url, связываем его с постом
+        if media_url:
+            cursor.execute("UPDATE uploaded_files SET post_id = %s WHERE url = %s", (post_id, media_url))
+
         cursor.execute("UPDATE users SET coins = coins + 5 WHERE id = %s", (current_user["id"],))
-        # Получаем новое значение монет
         cursor.execute("SELECT coins FROM users WHERE id = %s", (current_user["id"],))
         row = cursor.fetchone()
         if row is None:
@@ -246,6 +256,12 @@ async def delete_post(post_id: str, current_user: dict = Depends(get_current_use
     if post["user_id"] != current_user["id"]:
         conn.close()
         raise HTTPException(403, "Not authorized to delete this post")
+    # Удаляем связанные файлы
+    cursor.execute("SELECT url FROM uploaded_files WHERE post_id = %s", (post_id,))
+    files = cursor.fetchall()
+    for f in files:
+        delete_file(f["url"])
+    cursor.execute("DELETE FROM uploaded_files WHERE post_id = %s", (post_id,))
     cursor.execute("DELETE FROM posts WHERE id = %s", (post_id,))
     conn.commit()
     conn.close()
@@ -336,7 +352,6 @@ async def create_comment(post_id: str, comment_data: dict, current_user: dict = 
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(404, "Post not found")
-    # Проверка существования пользователя
     cursor.execute("SELECT id FROM users WHERE id = %s", (current_user["id"],))
     if not cursor.fetchone():
         conn.close()
@@ -537,44 +552,28 @@ async def get_online_users(current_user: dict = Depends(get_current_user)):
     conn.close()
     return [dict(user) for user in users]
 
-# ---------- Загрузка файлов ----------
+# ---------- Загрузка файлов (Supabase Storage) ----------
 @app.post("/upload/media")
 async def upload_media(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    if file.content_type.startswith("image/"):
-        folder = "uploads/images"
-        media_type = "image"
-    elif file.content_type.startswith("video/"):
-        folder = "uploads/videos"
-        media_type = "video"
-    else:
-        raise HTTPException(400, "Only images and videos allowed")
-    os.makedirs(folder, exist_ok=True)
-    file_ext = os.path.splitext(file.filename)[1]
-    filename = f"{uuid.uuid4()}{file_ext}"
-    file_path = os.path.join(folder, filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    media_url = f"/{file_path}"
-    return {"media_url": media_url, "media_type": media_type}
+    content = await file.read()
+    public_url = upload_file(content, file.filename, file.content_type, is_avatar=False)
+    file_id = str(uuid.uuid4())
+    save_uploaded_file(file_id, public_url, "media", current_user["id"], is_avatar=False)
+    media_type = "image" if file.content_type.startswith("image/") else "video"
+    return {"media_url": public_url, "media_type": media_type}
 
 @app.post("/upload/avatar")
 async def upload_avatar(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(400, "Only images allowed")
-    folder = "uploads/avatars"
-    os.makedirs(folder, exist_ok=True)
-    file_ext = os.path.splitext(file.filename)[1]
-    filename = f"{current_user['id']}_{uuid.uuid4()}{file_ext}"
-    file_path = os.path.join(folder, filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    avatar_url = f"/{file_path}"
+    content = await file.read()
+    public_url = upload_file(content, file.filename, file.content_type, is_avatar=True)
+    file_id = str(uuid.uuid4())
+    save_uploaded_file(file_id, public_url, "avatars", current_user["id"], is_avatar=True)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET avatar_url = %s WHERE id = %s", (avatar_url, current_user["id"]))
+    cursor.execute("UPDATE users SET avatar_url = %s WHERE id = %s", (public_url, current_user["id"]))
     conn.commit()
     conn.close()
-    return {"avatar_url": avatar_url}
+    return {"avatar_url": public_url}
 
 # ---------- Подключение фронтенда ----------
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend")
