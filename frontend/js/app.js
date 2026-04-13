@@ -180,28 +180,111 @@ class App {
     }
 
     async loadComments(postId, container) {
-        try {
-            const response = await fetch(`${API_BASE}/posts/${postId}/comments`);
-            if (response.ok) {
-                const comments = await response.json();
-                container.innerHTML = comments.map(comment => `
-                    <div class="comment">
-                        <div class="comment-header">
-                            <div class="comment-user">
-                                <img src="${this.getAvatarUrl(comment.avatar_url)}" class="avatar-small">
-                                <span>${this.escapeHtml(comment.username)}</span>
-                            </div>
-                            <div class="timestamp">${this.formatDate(comment.timestamp)}</div>
-                        </div>
-                        <div class="comment-content">${this.escapeHtml(comment.content)}</div>
-                    </div>
-                `).join('');
-            }
-        } catch (error) {
-            console.error('Error loading comments:', error);
-            container.innerHTML = '<div class="error">Failed to load comments</div>';
+    try {
+        const response = await fetch(`${API_BASE}/posts/${postId}/comments`);
+        if (response.ok) {
+            const comments = await response.json();
+            // Строим дерево: группируем по parent_comment_id
+            const commentMap = new Map();
+            const roots = [];
+            comments.forEach(c => {
+                commentMap.set(c.id, { ...c, replies: [] });
+            });
+            comments.forEach(c => {
+                if (c.parent_comment_id && commentMap.has(c.parent_comment_id)) {
+                    commentMap.get(c.parent_comment_id).replies.push(commentMap.get(c.id));
+                } else {
+                    roots.push(commentMap.get(c.id));
+                }
+            });
+            container.innerHTML = this.renderCommentTree(roots, postId);
+            // Привязываем обработчики кнопок "Ответить"
+            this.attachReplyListeners(postId);
         }
+    } catch (error) {
+        console.error('Error loading comments:', error);
+        container.innerHTML = '<div class="error">Failed to load comments</div>';
     }
+}
+
+renderCommentTree(comments, postId, level = 0) {
+    if (!comments.length) return '';
+    const marginLeft = level * 20; // отступ для вложенных
+    return comments.map(comment => `
+        <div class="comment" style="margin-left: ${marginLeft}px;" data-comment-id="${comment.id}">
+            <div class="comment-header">
+                <div class="comment-user">
+                    <img src="${this.getAvatarUrl(comment.avatar_url)}" class="avatar-small">
+                    <span>${this.escapeHtml(comment.username)}</span>
+                </div>
+                <div class="timestamp">${this.formatDate(comment.timestamp)}</div>
+            </div>
+            <div class="comment-content">${this.escapeHtml(comment.content)}</div>
+            <button class="reply-btn btn-small" data-comment-id="${comment.id}">Ответить</button>
+            <div class="reply-form" id="reply-form-${comment.id}" style="display: none; margin-top: 8px;">
+                <input type="text" class="reply-input" placeholder="Ваш ответ..." style="width: 80%;">
+                <button class="btn-primary btn-small submit-reply" data-parent-id="${comment.id}">Отправить</button>
+            </div>
+            ${this.renderCommentTree(comment.replies, postId, level + 1)}
+        </div>
+    `).join('');
+}
+
+attachReplyListeners(postId) {
+    // Кнопки "Ответить" показывают форму
+    document.querySelectorAll(`.reply-btn`).forEach(btn => {
+        btn.removeEventListener('click', this._replyBtnHandler);
+        this._replyBtnHandler = (e) => {
+            const commentId = e.currentTarget.getAttribute('data-comment-id');
+            const form = document.getElementById(`reply-form-${commentId}`);
+            if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        };
+        btn.addEventListener('click', this._replyBtnHandler);
+    });
+    // Кнопки отправки ответа
+    document.querySelectorAll(`.submit-reply`).forEach(btn => {
+        btn.removeEventListener('click', this._submitReplyHandler);
+        this._submitReplyHandler = async (e) => {
+            const parentId = e.currentTarget.getAttribute('data-parent-id');
+            const input = document.getElementById(`reply-form-${parentId}`).querySelector('.reply-input');
+            const content = input.value.trim();
+            if (!content) return;
+            await this.addReply(postId, parentId, content);
+            input.value = '';
+            document.getElementById(`reply-form-${parentId}`).style.display = 'none';
+        };
+        btn.addEventListener('click', this._submitReplyHandler);
+    });
+}
+
+async addReply(postId, parentId, content) {
+    const user = authManager.getCurrentUser();
+    if (!user || !user.id) {
+        alert('Ошибка: пользователь не найден');
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE}/posts/${postId}/comments`, {
+            method: 'POST',
+            headers: authManager.getAuthHeaders(),
+            body: JSON.stringify({ content, parent_id: parentId })
+        });
+        if (response.ok) {
+            const result = await response.json();
+            authManager.updateUserCoins(result.new_balance);
+            // Перезагружаем комментарии для этого поста
+            const commentsList = document.getElementById(`comments-list-${postId}`);
+            await this.loadComments(postId, commentsList);
+            this.showSuccess('Ответ добавлен! +2 монеты');
+        } else {
+            throw new Error('Failed to add reply');
+        }
+    } catch (error) {
+        console.error(error);
+        this.showError('Failed to add reply');
+    }
+}
+    
 
     async addComment(postId) {
         const input = document.getElementById(`comment-input-${postId}`);
