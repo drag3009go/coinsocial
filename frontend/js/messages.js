@@ -1,5 +1,3 @@
-const API_BASE = window.API_BASE || 'https://coinsocial.onrender.com';
-
 class MessageManager {
     constructor() {
         this.currentConversation = null;
