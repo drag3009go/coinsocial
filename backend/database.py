@@ -74,6 +74,8 @@ def init_db():
             FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
+
+
     ''')
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS post_reactions (
@@ -86,6 +88,23 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
+
+            # Таблица для отслеживания загруженных файлов
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS uploaded_files (
+            id TEXT PRIMARY KEY,
+            url TEXT NOT NULL,
+            bucket TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            user_id TEXT,
+            post_id TEXT,
+            is_avatar BOOLEAN DEFAULT FALSE,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+            FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE
+        )
+    ''')
+        
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
