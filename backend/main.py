@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
+
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.database import get_db_connection, init_db, hash_password, verify_password
 from backend.auth import create_access_token, verify_token, get_current_user
 from backend.models import UserCreate, UserLogin, Post, Comment, Message
+from backend.database import get_db_connection, init_db, hash_password, verify_password, save_uploaded_file, delete_old_files
+from backend.storage import upload_file, init_storage_buckets, delete_file
+
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
