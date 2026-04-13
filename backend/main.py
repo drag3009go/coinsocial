@@ -344,6 +344,7 @@ async def dislike_post(post_id: str, current_user: dict = Depends(get_current_us
 @app.post("/posts/{post_id}/comments")
 async def create_comment(post_id: str, comment_data: dict, current_user: dict = Depends(get_current_user)):
     content = comment_data.get("content")
+    parent_id = comment_data.get("parent_id")  # может быть None 
     if not content:
         raise HTTPException(400, "Content required")
     conn = get_db_connection()
