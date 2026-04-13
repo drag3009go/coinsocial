@@ -5,10 +5,26 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 def get_db_connection():
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    if not DATABASE_URL:
-        raise Exception("DATABASE_URL not set")
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    """Подключение к PostgreSQL через отдельные переменные окружения"""
+    host = os.getenv("PGHOST")
+    port = os.getenv("PGPORT", "5432")
+    dbname = os.getenv("PGDATABASE")
+    user = os.getenv("PGUSER")
+    password = os.getenv("PGPASSWORD")
+    sslmode = os.getenv("PGSSLMODE", "require")
+
+    if not all([host, dbname, user, password]):
+        raise Exception("Missing database environment variables (PGHOST, PGDATABASE, PGUSER, PGPASSWORD)")
+
+    conn = psycopg2.connect(
+        host=host,
+        port=port,
+        dbname=dbname,
+        user=user,
+        password=password,
+        sslmode=sslmode,
+        cursor_factory=RealDictCursor
+    )
     return conn
 
 def init_db():
@@ -79,7 +95,7 @@ def init_db():
             FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-    # uploaded_files (для отслеживания файлов в Storage)
+    # uploaded_files
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS uploaded_files (
             id TEXT PRIMARY KEY,
@@ -123,7 +139,6 @@ def save_uploaded_file(file_id, url, bucket, user_id, post_id=None, is_avatar=Fa
     conn.close()
 
 def delete_old_files(older_than_hours=92):
-    """Удаляет файлы (кроме аватаров) старше указанного времени и записи из БД"""
     from backend.storage import delete_file
     conn = get_db_connection()
     cursor = conn.cursor()
