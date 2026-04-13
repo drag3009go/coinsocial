@@ -78,7 +78,7 @@ class MessageManager {
         }
         container.innerHTML = this.conversations.map(conv => `
             <div class="conversation-item ${this.currentConversation === conv.user_id ? 'active' : ''}" data-peer-id="${conv.user_id}">
-                <img src="${conv.avatar_url ? API_BASE + conv.avatar_url : 'default-avatar.png'}" class="avatar">
+                <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
                 <div class="conversation-info">
                     <div class="username">${conv.username}</div>
                     <div class="last-message">${this.truncateText(conv.last_message, 30)}</div>
@@ -110,7 +110,7 @@ class MessageManager {
             if (conv) {
                 header.innerHTML = `
                     <div class="user-info">
-                        <img src="${conv.avatar_url ? API_BASE + conv.avatar_url : 'default-avatar.png'}" class="avatar">
+                        <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
                         <div class="username">${conv.username}</div>
                     </div>
                 `;
@@ -225,7 +225,7 @@ class MessageManager {
         }
         container.innerHTML = users.map(user => `
             <div class="conversation-item" data-peer-id="${user.id}">
-                <img src="${user.avatar_url ? API_BASE + user.avatar_url : 'default-avatar.png'}" class="avatar">
+                <img src="${getAvatarUrl(user.avatar_url)}" class="avatar">
                 <div class="conversation-info">
                     <div class="username">${user.username}</div>
                     <div class="last-message">${user.coins} монет</div>
