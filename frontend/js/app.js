@@ -83,79 +83,40 @@
         feed.innerHTML = this.posts.map(post => this.createPostElement(post)).join('');
     }
 
-    createPostElement(post) {
-        const isOwner = authManager.getCurrentUser()?.id === post.user_id;
-        const menuHtml = isOwner ? `
-            <div class="post-menu">
-                ⋮
-                <div class="post-menu-content">
-                    <button onclick="app.editPost('${post.id}')">✏️ Редактировать</button>
-                    <button onclick="app.deletePost('${post.id}')">🗑️ Удалить</button>
-                </div>
-            </div>
-        ` : '';
+createPostElement(post) {
+    const isOwner = authManager.getCurrentUser()?.id === post.user_id;
+    const menuHtml = isOwner ? `...` : '';
 
-        const mediaHtml = post.media_url ? `
-            <div class="post-media-container">
-                ${post.media_type === 'video' ?
-                `<video src="${API_BASE}${post.media_url}" controls class="post-media"></video>` :
-                `<img src="${API_BASE}${post.media_url}" alt="Post media" class="post-media">`
-            }
-            </div>
-        ` : '';
+    const mediaHtml = post.media_url ? `...` : '';
 
-        return `
-            <div class="post" data-post-id="${post.id}">
-                <div class="post-header">
-                    <div class="user-info">
-                        <img src="${post.avatar_url ? API_BASE + post.avatar_url : 'default-avatar.png'}" 
-                             alt="${post.username}" class="avatar">
-                        <div>
-                            <div class="username">${post.username}</div>
-                            <div class="timestamp">${this.formatDate(post.timestamp)}</div>
-                        </div>
-                    </div>
-                    ${menuHtml}
-                </div>
-                
-                <div class="post-content" id="post-content-${post.id}">${this.escapeHtml(post.content)}</div>
-                
-                ${mediaHtml}
-                
-                <div class="post-stats">
-                    <span>${post.likes} 👍</span>
-                    <span>${post.dislikes} 👎</span>
-                    <span>${post.comments_count} 💬</span>
-                </div>
-                
-                <div class="post-actions">
-                    <button class="action-button like-button" 
-                            onclick="app.handleLike('${post.id}')">
-                        👍 Лайк
-                    </button>
-                    <button class="action-button dislike-button" 
-                            onclick="app.handleDislike('${post.id}')">
-                        👎 Дизлайк
-                    </button>
-                    <button class="action-button comment-button" onclick="app.showComments('${post.id}')">
-                        💬 Комментарии
+    // Загружаем черновик комментария, если есть
+    const draft = this.loadCommentDraft(post.id) || '';
+
+    return `
+        <div class="post" data-post-id="${post.id}">
+            <div class="post-header">...</div>
+            <div class="post-content">...</div>
+            ${mediaHtml}
+            <div class="post-stats">...</div>
+            <div class="post-actions">...</div>
+            
+            <!-- Секция комментариев всегда видна, но список скрыт? Нет, лучше показывать кнопку "Показать комментарии" -->
+            <div class="comments-section" id="comments-${post.id}">
+                <div class="comment-form">
+                    <input type="text" class="comment-input" id="comment-input-${post.id}" 
+                           placeholder="Напишите комментарий..." value="${this.escapeHtml(draft)}">
+                    <button class="btn btn-primary btn-small" onclick="app.addComment('${post.id}')">
+                        Отправить
                     </button>
                 </div>
-                
-                <div class="comments-section" id="comments-${post.id}" style="display: none;">
-                    <div class="comment-form">
-                        <input type="text" class="comment-input" id="comment-input-${post.id}" 
-                               placeholder="Напишите комментарий...">
-                        <button class="btn btn-primary btn-small" onclick="app.addComment('${post.id}')">
-                            Отправить
-                        </button>
-                    </div>
-                    <div class="comments-list" id="comments-list-${post.id}"></div>
-                </div>
+                <div class="comments-list" id="comments-list-${post.id}" style="display: none;"></div>
+                <button class="show-comments-btn" onclick="app.toggleComments('${post.id}')">💬 Показать комментарии</button>
             </div>
-        `;
-    }
+        </div>
+    `;
+}
 
+     
     async createPost(event) {
         event.preventDefault();
 
