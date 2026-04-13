@@ -3,12 +3,10 @@ const API_BASE = 'https://coinsocial.onrender.com';
 // Функция для исправления URL аватара
 function getAvatarUrl(avatarUrl) {
     if (!avatarUrl) return '/default-avatar.png';
-    // Старые локальные аватары (пропали) → заглушка
     if (avatarUrl.startsWith('/uploads/avatars/')) return '/default-avatar.png';
     return avatarUrl;
 }
 window.getAvatarUrl = getAvatarUrl;
-
 
 class AuthManager {
     constructor() {
@@ -55,7 +53,6 @@ class AuthManager {
     }
 
     async register(username, email, password) {
-        console.log('Starting registration for:', username, email);
         try {
             const response = await fetch(`${API_BASE}/register`, {
                 method: 'POST',
@@ -78,7 +75,6 @@ class AuthManager {
     }
 
     async login(email, password) {
-        console.log('Starting login for:', email);
         try {
             const response = await fetch(`${API_BASE}/login`, {
                 method: 'POST',
@@ -101,7 +97,6 @@ class AuthManager {
     }
 
     logout() {
-        console.log('Logging out...');
         this.token = null;
         this.currentUser = null;
         localStorage.removeItem('token');
@@ -115,9 +110,7 @@ class AuthManager {
 
     getAuthHeaders() {
         const headers = { 'Content-Type': 'application/json' };
-        if (this.token) {
-            headers['Authorization'] = `Bearer ${this.token}`;
-        }
+        if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
         return headers;
     }
 
@@ -125,11 +118,7 @@ class AuthManager {
         if (!this.currentUser) {
             const stored = localStorage.getItem('currentUser');
             if (stored) {
-                try {
-                    this.currentUser = JSON.parse(stored);
-                } catch (e) {
-                    console.error('Error parsing stored user:', e);
-                }
+                try { this.currentUser = JSON.parse(stored); } catch(e) { console.error(e); }
             }
         }
         return this.currentUser;
@@ -159,50 +148,33 @@ class AuthManager {
 
     redirectIfNeeded() {
         const currentPage = window.location.pathname;
-        const isAuthPage = currentPage.includes('login.html') ||
-            currentPage.includes('register.html') ||
-            currentPage.includes('index.html');
-        const isProtectedPage = currentPage.includes('feed.html') ||
-            currentPage.includes('profile.html') ||
-            currentPage.includes('messages.html') ||
-            currentPage.includes('leaderboard.html');
-        if (isProtectedPage && !this.isAuthenticated()) {
-            window.location.href = 'login.html';
-        } else if (isAuthPage && this.isAuthenticated()) {
-            window.location.href = 'feed.html';
-        }
+        const isAuthPage = currentPage.includes('login.html') || currentPage.includes('register.html') || currentPage.includes('index.html');
+        const isProtectedPage = currentPage.includes('feed.html') || currentPage.includes('profile.html') || currentPage.includes('messages.html') || currentPage.includes('leaderboard.html');
+        if (isProtectedPage && !this.isAuthenticated()) window.location.href = 'login.html';
+        else if (isAuthPage && this.isAuthenticated()) window.location.href = 'feed.html';
     }
 
-    // ---------- Ìåòîäû äëÿ îíëàéí-ïîëüçîâàòåëåé ----------
     async fetchOnlineUsers() {
         try {
-            const response = await fetch(`${API_BASE}/online-users`, {
-                headers: this.getAuthHeaders()
-            });
-            if (response.ok) {
-                return await response.json();
-            }
-        } catch (error) {
-            console.error('Error fetching online users:', error);
-        }
+            const response = await fetch(`${API_BASE}/online-users`, { headers: this.getAuthHeaders() });
+            if (response.ok) return await response.json();
+        } catch (error) { console.error(error); }
         return [];
     }
 
     async showOnlinePopup() {
         const popup = document.getElementById('onlinePopup');
         if (!popup) return;
-
         if (popup.classList.contains('show')) {
             popup.classList.remove('show');
             setTimeout(() => { popup.innerHTML = ''; }, 200);
         } else {
             const users = await this.fetchOnlineUsers();
-            if (users.length === 0) {
-                popup.innerHTML = '<div class="online-user">Íåò ïîëüçîâàòåëåé îíëàéí</div>';
-            } else {
+            if (users.length === 0) popup.innerHTML = '<div class="online-user">Нет пользователей онлайн</div>';
+            else {
                 popup.innerHTML = users.map(u => `
                     <div class="online-user" onclick="messageManager.startNewConversation('${u.id}')">
-                        <img src="${u.avatar_url ? API_BASE + u.avatar_url : 'default-avatar.png'}">
+                        <img src="${getAvatarUrl(u.avatar_url)}">
                         <span>${u.username}</span>
                     </div>
                 `).join('');
@@ -214,23 +186,14 @@ class AuthManager {
     setupOnlineButton() {
         const onlineBtn = document.getElementById('onlineBtn');
         if (onlineBtn) {
-            onlineBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.showOnlinePopup();
-            });
+            onlineBtn.addEventListener('click', (e) => { e.stopPropagation(); this.showOnlinePopup(); });
             document.addEventListener('click', (e) => {
                 const popup = document.getElementById('onlinePopup');
-                if (popup && !e.target.closest('.online-indicator')) {
-                    popup.classList.remove('show');
-                }
+                if (popup && !e.target.closest('.online-indicator')) popup.classList.remove('show');
             });
         }
     }
 }
 
 const authManager = new AuthManager();
-
-document.addEventListener('DOMContentLoaded', async function () {
-    console.log('DOM loaded, initializing auth...');
-    await authManager.init();
-});
+document.addEventListener('DOMContentLoaded', async () => { await authManager.init(); });
