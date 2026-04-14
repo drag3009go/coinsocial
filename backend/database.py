@@ -44,6 +44,7 @@ def init_db():
             last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
     # posts
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS posts (
@@ -58,6 +59,7 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
+
     # comments
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS comments (
@@ -66,18 +68,13 @@ def init_db():
             user_id TEXT NOT NULL,
             content TEXT NOT NULL,
             timestamp TIMESTAMP NOT NULL,
+            parent_comment_id TEXT,
             FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+            FOREIGN KEY (parent_comment_id) REFERENCES comments (id) ON DELETE CASCADE
         )
     ''')
-
-
-
-    # После создания таблицы comments
-cursor.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS parent_comment_id TEXT")
-cursor.execute("ALTER TABLE comments ADD CONSTRAINT fk_comments_parent FOREIGN KEY (parent_comment_id) REFERENCES comments(id) ON DELETE CASCADE")
-cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id)")
-
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id)")
 
     # post_reactions
     cursor.execute('''
@@ -91,6 +88,7 @@ cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(paren
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
+
     # messages
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
@@ -104,7 +102,8 @@ cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(paren
             FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-    # uploaded_files
+
+    # uploaded_files (для отслеживания файлов в Storage)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS uploaded_files (
             id TEXT PRIMARY KEY,
@@ -118,6 +117,7 @@ cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(paren
             FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE
         )
     ''')
+
     # индексы
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp)')
@@ -125,6 +125,7 @@ cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(paren
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id, receiver_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_uploaded_files_created ON uploaded_files(created_at)')
+
     conn.commit()
     conn.close()
 
