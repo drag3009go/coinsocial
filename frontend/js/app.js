@@ -171,13 +171,13 @@ class App {
     }
 
     async toggleComments(postId) {
-        const commentsList = document.getElementById(`comments-list-${postId}`);
-        if (commentsList.style.display === 'none') {
-            commentsList.style.display = 'block';
-            await this.loadComments(postId, commentsList);
-        } else {
-            commentsList.style.display = 'none';
-        }
+    const commentsList = document.getElementById(`comments-list-${postId}`);
+    if (commentsList.style.display === 'none') {
+        commentsList.style.display = 'block';
+        await this.loadComments(postId, commentsList);
+    } else {
+        commentsList.style.display = 'none';
+    }
     }
 
     async loadComments(postId, container) {
