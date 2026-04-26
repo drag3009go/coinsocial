@@ -165,53 +165,91 @@ class MessageManager {
         }
     }
 
-    renderMessages() {
-        const container = document.getElementById('chatMessages');
-        if (!container) return;
-        const currentUser = authManager.getCurrentUser();
-        if (!currentUser) return;
 
-        container.innerHTML = this.messages.map(msg => {
-            const isSent = msg.sender_id === currentUser.id;
-            return `
-                <div class="message ${isSent ? 'sent' : 'received'}">
-                    <div class="message-content">${this.escapeHtml(msg.content)}</div>
-                    <div class="message-time">${this.formatTime(msg.timestamp)}</div>
-                </div>
-            `;
-        }).join('');
-        container.scrollTop = container.scrollHeight;
+    renderMessages() {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    const currentUser = authManager.getCurrentUser();
+    if (!currentUser) return;
+
+    container.innerHTML = this.messages.map(msg => {
+        const isSent = msg.sender_id === currentUser.id;
+        const tempAttr = msg.is_temp ? `data-temp-id="${msg.id}"` : '';
+        return `
+            <div class="message ${isSent ? 'sent' : 'received'}" ${tempAttr}>
+                <div class="message-content">${this.escapeHtml(msg.content)}</div>
+                <div class="message-time">${this.formatTime(msg.timestamp)}</div>
+                ${msg.is_temp ? '<div class="sending">⏳ Отправка...</div>' : ''}
+            </div>
+        `;
+    }).join('');
+    container.scrollTop = container.scrollHeight;
     }
+    
+ 
+
 
     async sendMessage() {
-        const input = document.getElementById('messageInput');
-        const content = input.value.trim();
-        if (!content || !this.currentConversation) return;
+    const input = document.getElementById('messageInput');
+    const content = input.value.trim();
+    if (!content || !this.currentConversation) return;
 
-        this.showSendingIndicator();
-        try {
-            const response = await fetch(`${API_BASE}/messages/send`, {
-                method: 'POST',
-                headers: authManager.getAuthHeaders(),
-                body: JSON.stringify({
-                    receiver_id: this.currentConversation,
-                    content: content
-                })
-            });
-            if (response.ok) {
-                input.value = '';
-                await this.loadMessages(this.currentConversation);
-                await this.loadConversations();
-            } else {
-                throw new Error('Failed to send message');
-            }
-        } catch (error) {
-            console.error('Error sending message:', error);
-            this.showError('Failed to send message');
-        } finally {
-            this.hideSendingIndicator();
+    // Блокируем кнопку и поле ввода
+    const sendBtn = document.getElementById('sendMsgBtn');
+    const messageInput = document.getElementById('messageInput');
+    sendBtn.disabled = true;
+    messageInput.disabled = true;
+
+    // Генерируем временный ID и метку времени
+    const tempId = 'temp_' + Date.now() + '_' + Math.random();
+    const tempMsg = {
+        id: tempId,
+        sender_id: authManager.getCurrentUser().id,
+        content: content,
+        timestamp: new Date().toISOString(),
+        is_temp: true
+    };
+
+    // Добавляем временное сообщение в конец списка
+    this.messages.push(tempMsg);
+    this.renderMessages();
+
+    // Очищаем поле ввода и разблокируем его (кнопка остаётся заблокирована до ответа)
+    input.value = '';
+    messageInput.disabled = false;
+    messageInput.focus();
+
+    try {
+        const response = await fetch(`${API_BASE}/messages/send`, {
+            method: 'POST',
+            headers: authManager.getAuthHeaders(),
+            body: JSON.stringify({
+                receiver_id: this.currentConversation,
+                content: content
+            })
+        });
+        if (response.ok) {
+            const data = await response.json();
+            // Удаляем временное сообщение и загружаем реальные сообщения
+            this.messages = this.messages.filter(m => m.id !== tempId);
+            await this.loadMessages(this.currentConversation);
+        } else {
+            throw new Error('Failed to send message');
         }
+    } catch (error) {
+        console.error('Error sending message:', error);
+        // Помечаем временное сообщение как ошибка
+        const tempMsgDiv = document.querySelector(`.message[data-temp-id="${tempId}"]`);
+        if (tempMsgDiv) {
+            tempMsgDiv.classList.add('error');
+            tempMsgDiv.innerHTML += '<div class="error-mark">⚠️ Не отправлено</div>';
+        }
+        this.showError('Не удалось отправить сообщение');
+    } finally {
+        sendBtn.disabled = false;
     }
+    }
+    
 
     showSendingIndicator() {
         let indicator = document.getElementById('sendingIndicator');
