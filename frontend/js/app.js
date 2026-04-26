@@ -4,7 +4,7 @@ class App {
         this.posts = [];
         this.isLoading = false;
         this.offset = 0;
-        this.limit = 10;
+        this.limit = 20;
         this.hasMore = true;
         this.updateInterval = null;
         this.openCommentsState = new Map();   // postId -> bool
@@ -36,9 +36,10 @@ class App {
         if (this.updateInterval) clearInterval(this.updateInterval);
         this.updateInterval = setInterval(async () => {
             if (window.location.pathname.includes('feed.html')) {
-                await this.refreshFeed();
+                await this.refreshFeed();           // обновляем ленту (лайки, новые посты)
+                await this.refreshOpenComments();   // обновляем открытые комментарии
             }
-        }, 120000); // 2 минуты
+        }, 60000); // 60 секунд
     }
 
     async refreshFeed() {
@@ -49,11 +50,13 @@ class App {
                 for (const newPost of newPosts) {
                     const existingPostDiv = document.querySelector(`.post[data-post-id="${newPost.id}"]`);
                     if (existingPostDiv) {
+                        // обновляем счётчики существующего поста
                         const statsDiv = existingPostDiv.querySelector('.post-stats');
                         if (statsDiv) {
                             statsDiv.innerHTML = `<span>${newPost.likes} 👍</span><span>${newPost.dislikes} 👎</span><span>${newPost.comments_count} 💬</span>`;
                         }
                     } else {
+                        // новый пост – вставляем в начало
                         const postElement = this.createPostElement(newPost);
                         const feed = document.getElementById('feed');
                         feed.insertAdjacentHTML('afterbegin', postElement);
@@ -66,6 +69,17 @@ class App {
             }
         } catch (error) {
             console.error('Error refreshing feed:', error);
+        }
+    }
+
+    async refreshOpenComments() {
+        for (let [postId, isOpen] of this.openCommentsState.entries()) {
+            if (isOpen) {
+                const commentsList = document.getElementById(`comments-list-${postId}`);
+                if (commentsList) {
+                    await this.loadComments(postId, commentsList);
+                }
+            }
         }
     }
 
@@ -96,6 +110,8 @@ class App {
                         document.getElementById('feed').insertAdjacentHTML('beforeend', postElement);
                         this.attachCommentDraftListenersForPost(post.id);
                         this.openCommentsState.set(post.id, false);
+                        const commentBtn = document.querySelector(`.post[data-post-id="${post.id}"] .comment-button`);
+                        if (commentBtn) commentBtn.onclick = () => this.toggleComments(post.id);
                     }
                 }
             } else {
@@ -224,7 +240,7 @@ class App {
                 <div class="post-actions">
                     <button class="action-button like-button" onclick="app.handleLike('${post.id}')">👍 Лайк</button>
                     <button class="action-button dislike-button" onclick="app.handleDislike('${post.id}')">👎 Дизлайк</button>
-                    <button class="action-button comment-button">💬 Комментарии</button>
+                    <button class="action-button comment-button" onclick="app.toggleComments('${post.id}')">💬 Комментарии</button>
                 </div>
                 <div class="comments-section" id="comments-${post.id}" style="display: block;">
                     <div class="comment-form">
@@ -253,7 +269,7 @@ class App {
         }
     }
 
-    // ---------- Комментарии (плоские, без ответов, с удалением) ----------
+    // ---------- Комментарии (плоские, с удалением) ----------
     saveCommentDraft(postId, text) {
         localStorage.setItem(`comment_draft_${postId}`, text);
     }
@@ -466,6 +482,7 @@ class App {
                 document.getElementById('mediaPreview').innerHTML = '';
                 document.getElementById('mediaPreview').style.display = 'none';
                 if (result.new_balance !== undefined) authManager.updateUserCoins(result.new_balance);
+                // добавляем новый пост в начало
                 const newPostResponse = await fetch(`${API_BASE}/feed?limit=1&offset=0`);
                 if (newPostResponse.ok) {
                     const lastPost = (await newPostResponse.json())[0];
