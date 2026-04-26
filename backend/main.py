@@ -9,11 +9,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from pywebpush import webpush, WebPushException
+import json
 
 # Импорты из модулей проекта
 from backend.database import (
     get_db_connection, init_db, hash_password, verify_password,
-    save_uploaded_file, delete_old_files
+    save_uploaded_file, delete_old_files, get_push_subscription, save_push_subscription
 )
 from backend.auth import create_access_token, verify_token, get_current_user
 from backend.models import UserCreate, UserLogin
@@ -50,7 +52,6 @@ async def delete_old_posts_and_messages():
                 cursor.execute("DELETE FROM uploaded_files WHERE post_id = %s", (pid,))
 
             # 4. Удаляем старые файлы, не привязанные к постам (старше 92 часов)
-            #    (аватары не удаляются)
             delete_old_files(168)
 
             conn.commit()
@@ -89,6 +90,26 @@ init_db()
 init_storage_buckets()
 logger.info("✅ Database and Storage initialized")
 
+# ---------- Вспомогательная функция для отправки push ----------
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
+VAPID_CLAIMS = {"sub": "mailto:monetochka@example.com"}
+
+async def send_push_notification(user_id: str, title: str, body: str, url: str = "/messages.html"):
+    """Отправляет push-уведомление пользователю, если у него есть подписка."""
+    subscription = get_push_subscription(user_id)
+    if not subscription:
+        return
+    try:
+        webpush(
+            subscription_info=subscription,
+            data=json.dumps({"title": title, "body": body, "url": url}),
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims=VAPID_CLAIMS
+        )
+    except WebPushException as e:
+        logger.error(f"Push notification failed for user {user_id}: {e}")
+
 # ---------- Публичные маршруты ----------
 @app.post("/register")
 async def register(user_data: UserCreate):
@@ -116,29 +137,6 @@ async def register(user_data: UserCreate):
     access_token = create_access_token(data={"sub": user_id})
     return {"access_token": access_token, "token_type": "bearer", "user_id": user_id}
 
-
-@app.delete("/comments/{comment_id}")
-async def delete_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    # Проверяем, существует ли комментарий и кто его автор
-    cursor.execute("SELECT user_id, post_id FROM comments WHERE id = %s", (comment_id,))
-    comment = cursor.fetchone()
-    if not comment:
-        conn.close()
-        raise HTTPException(404, "Comment not found")
-    if comment["user_id"] != current_user["id"]:
-        conn.close()
-        raise HTTPException(403, "Not authorized to delete this comment")
-    # Удаляем комментарий (каскадно удалятся ответы, если есть)
-    cursor.execute("DELETE FROM comments WHERE id = %s", (comment_id,))
-    # Опционально: обновить счётчик комментариев у поста (если используете отдельное поле)
-    # В вашем случае счётчик вычисляется через COUNT(*) в GET /feed, поэтому ничего не делаем.
-    conn.commit()
-    conn.close()
-    return {"message": "Comment deleted successfully"}
-
-
 @app.post("/login")
 async def login(login_data: UserLogin):
     logger.info(f"POST /login called with email: {login_data.email}")
@@ -152,6 +150,12 @@ async def login(login_data: UserLogin):
     access_token = create_access_token(data={"sub": user["id"]})
     logger.info(f"User {user['id']} logged in")
     return {"access_token": access_token, "token_type": "bearer", "user_id": user["id"]}
+
+# ---------- Push-подписка ----------
+@app.post("/push/subscribe")
+async def subscribe_push(subscription: dict, current_user: dict = Depends(get_current_user)):
+    save_push_subscription(current_user["id"], subscription)
+    return {"status": "ok"}
 
 # ---------- Защищённые маршруты ----------
 @app.get("/profile")
@@ -212,16 +216,13 @@ async def create_post(post_data: dict, current_user: dict = Depends(get_current_
             "INSERT INTO posts (id, user_id, content, media_url, media_type, timestamp) VALUES (%s, %s, %s, %s, %s, %s)",
             (post_id, current_user["id"], content, media_url, media_type, datetime.now().isoformat())
         )
-        # Если есть media_url, связываем его с постом
         if media_url:
             cursor.execute("UPDATE uploaded_files SET post_id = %s WHERE url = %s", (post_id, media_url))
 
         cursor.execute("UPDATE users SET coins = coins + 5 WHERE id = %s", (current_user["id"],))
         cursor.execute("SELECT coins FROM users WHERE id = %s", (current_user["id"],))
         row = cursor.fetchone()
-        if row is None:
-            raise Exception("User disappeared after update")
-        new_coins = row["coins"]
+        new_coins = row["coins"] if row else 0
         conn.commit()
         logger.info(f"Post {post_id} created by user {current_user['id']}")
     except Exception as e:
@@ -271,7 +272,7 @@ async def update_post(post_id: str, post_data: dict, current_user: dict = Depend
 async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM posts WHERE id = %s", (post_id,))
+    cursor.execute("SELECT user_id, media_url FROM posts WHERE id = %s", (post_id,))
     post = cursor.fetchone()
     if not post:
         conn.close()
@@ -279,12 +280,10 @@ async def delete_post(post_id: str, current_user: dict = Depends(get_current_use
     if post["user_id"] != current_user["id"]:
         conn.close()
         raise HTTPException(403, "Not authorized to delete this post")
-    # Удаляем связанные файлы
-    cursor.execute("SELECT url FROM uploaded_files WHERE post_id = %s", (post_id,))
-    files = cursor.fetchall()
-    for f in files:
-        delete_file(f["url"])
-    cursor.execute("DELETE FROM uploaded_files WHERE post_id = %s", (post_id,))
+    # Удаляем медиафайл
+    if post["media_url"]:
+        delete_file(post["media_url"])
+        cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (post["media_url"],))
     cursor.execute("DELETE FROM posts WHERE id = %s", (post_id,))
     conn.commit()
     conn.close()
@@ -367,7 +366,6 @@ async def dislike_post(post_id: str, current_user: dict = Depends(get_current_us
 @app.post("/posts/{post_id}/comments")
 async def create_comment(post_id: str, comment_data: dict, current_user: dict = Depends(get_current_user)):
     content = comment_data.get("content")
-    parent_id = comment_data.get("parent_id")  # может быть None 
     if not content:
         raise HTTPException(400, "Content required")
     conn = get_db_connection()
@@ -389,9 +387,7 @@ async def create_comment(post_id: str, comment_data: dict, current_user: dict = 
         cursor.execute("UPDATE users SET coins = coins + 2 WHERE id = %s", (current_user["id"],))
         cursor.execute("SELECT coins FROM users WHERE id = %s", (current_user["id"],))
         row = cursor.fetchone()
-        if row is None:
-            raise Exception("User disappeared after update")
-        new_coins = row["coins"]
+        new_coins = row["coins"] if row else 0
         conn.commit()
     except Exception as e:
         conn.close()
@@ -418,6 +414,23 @@ async def get_comments(post_id: str):
     comments = cursor.fetchall()
     conn.close()
     return [dict(comment) for comment in comments]
+
+@app.delete("/comments/{comment_id}")
+async def delete_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, post_id FROM comments WHERE id = %s", (comment_id,))
+    comment = cursor.fetchone()
+    if not comment:
+        conn.close()
+        raise HTTPException(404, "Comment not found")
+    if comment["user_id"] != current_user["id"]:
+        conn.close()
+        raise HTTPException(403, "Not authorized")
+    cursor.execute("DELETE FROM comments WHERE id = %s", (comment_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Comment deleted"}
 
 # ---------- Сообщения ----------
 @app.get("/messages/conversations")
@@ -497,6 +510,8 @@ async def send_message(message_data: dict, current_user: dict = Depends(get_curr
             VALUES (%s, %s, %s, %s, %s, %s)
         ''', (msg_id, current_user["id"], receiver_id, content, datetime.now().isoformat(), False))
         conn.commit()
+        # Отправляем push-уведомление получателю
+        await send_push_notification(receiver_id, "Новое сообщение", f"От {current_user['username']}: {content[:50]}", "/messages.html")
     except Exception as e:
         conn.close()
         logger.error(f"Send message error: {e}")
@@ -588,16 +603,15 @@ async def upload_media(file: UploadFile = File(...), current_user: dict = Depend
 
 @app.post("/upload/avatar")
 async def upload_avatar(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    # Получаем старый аватар
+    content = await file.read()
+    # Удаляем старый аватар
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT avatar_url FROM users WHERE id = %s", (current_user["id"],))
     row = cursor.fetchone()
-    old_avatar_url = row["avatar_url"] if row else None
-    if old_avatar_url:
-        delete_file(old_avatar_url)  # удаляем старый файл из Storage
-
-    content = await file.read()
+    old_avatar = row["avatar_url"] if row else None
+    if old_avatar:
+        delete_file(old_avatar)
     public_url = upload_file(content, file.filename, file.content_type, is_avatar=True)
     file_id = str(uuid.uuid4())
     save_uploaded_file(file_id, public_url, "avatars", current_user["id"], is_avatar=True)
@@ -605,28 +619,6 @@ async def upload_avatar(file: UploadFile = File(...), current_user: dict = Depen
     conn.commit()
     conn.close()
     return {"avatar_url": public_url}
-
-@app.delete("/posts/{post_id}")
-async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id, media_url FROM posts WHERE id = %s", (post_id,))
-    post = cursor.fetchone()
-    if not post:
-        conn.close()
-        raise HTTPException(404, "Post not found")
-    if post["user_id"] != current_user["id"]:
-        conn.close()
-        raise HTTPException(403, "Not authorized")
-    # Удаляем медиафайл, если есть
-    if post["media_url"]:
-        delete_file(post["media_url"])
-        cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (post["media_url"],))
-    # Удаляем пост (каскадно удалятся комментарии, реакции)
-    cursor.execute("DELETE FROM posts WHERE id = %s", (post_id,))
-    conn.commit()
-    conn.close()
-    return {"message": "Post deleted"}
 
 # ---------- Подключение фронтенда ----------
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend")
