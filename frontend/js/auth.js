@@ -211,8 +211,17 @@ class AuthManager {
     }
 }
 
-const authManager = new AuthManager();
+// Синглтон: создаём глобальный экземпляр только один раз
+if (!window.authManager) {
+    window.authManager = new AuthManager();
+}
+const authManager = window.authManager;
 
-document.addEventListener('DOMContentLoaded', async () => {
-    await authManager.init();
+// Инициализация только один раз
+let authInitialized = false;
+document.addEventListener('DOMContentLoaded', async function () {
+    if (!authInitialized) {
+        authInitialized = true;
+        await authManager.init();
+    }
 });
