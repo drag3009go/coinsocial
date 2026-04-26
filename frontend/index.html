@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -52,6 +52,25 @@
             justify-content: center;
             flex-wrap: wrap;
             margin-top: 30px;
+        }
+        
+        .max-channel {
+            text-align: center;
+            margin: 40px 0;
+        }
+        .max-channel-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 40px;
+            text-decoration: none;
+            display: inline-block;
+            transition: 0.2s;
+            font-weight: bold;
+        }
+        .max-channel-btn:hover {
+            transform: scale(1.02);
+            opacity: 0.9;
         }
     </style>
 </head>
@@ -109,14 +128,41 @@
         </div>
 
         <!-- Статистика -->
+        <div style="text-align: center; margin: 50px 0;">
+            <h2>Присоединяйтесь к нашему сообществу</h2>
+            <div style="display: flex; justify-content: center; gap: 40px; margin-top: 20px; flex-wrap: wrap;">
+                <div style="text-align: center;">
+                    <div style="font-size: 2rem; font-weight: bold; color: #667eea;">1K+</div>
+                    <div>Пользователей</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 2rem; font-weight: bold; color: #667eea;">5K+</div>
+                    <div>Постов</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 2rem; font-weight: bold; color: #667eea;">10K+</div>
+                    <div>Монет заработано</div>
+                </div>
+            </div>
+        </div>
 
+        <!-- Канал в MAX -->
+        <div class="max-channel">
+            <p>📢 Наш канал в Max</p>
+            <a href="https://max.ru/join/x9EeUjK5sYSTZ1TYS6o7KzxQ5cT_Lpgz1Yojf5ZaXco" 
+               target="_blank" 
+               rel="noopener noreferrer" 
+               class="max-channel-btn">
+                ✈️ Присоединиться →
+            </a>
+        </div>
     </div>
 
     <script src="js/auth.js"></script>
     <script>
         // Перенаправление если уже авторизован
         if (authManager.isAuthenticated()) {
-        window.location.href = 'feed.html';
+            window.location.href = 'feed.html';
         }
     </script>
 </body>
