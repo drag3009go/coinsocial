@@ -121,6 +121,7 @@ async def register(user_data: UserCreate):
 async def delete_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor()
+    # Проверяем, существует ли комментарий и кто его автор
     cursor.execute("SELECT user_id, post_id FROM comments WHERE id = %s", (comment_id,))
     comment = cursor.fetchone()
     if not comment:
@@ -129,14 +130,13 @@ async def delete_comment(comment_id: str, current_user: dict = Depends(get_curre
     if comment["user_id"] != current_user["id"]:
         conn.close()
         raise HTTPException(403, "Not authorized to delete this comment")
-    # Удаляем комментарий (каскадно удалятся ответы)
+    # Удаляем комментарий (каскадно удалятся ответы, если есть)
     cursor.execute("DELETE FROM comments WHERE id = %s", (comment_id,))
-    # Обновляем счётчик комментариев у поста
-    cursor.execute("UPDATE posts SET comments_count = (SELECT COUNT(*) FROM comments WHERE post_id = %s) WHERE id = %s", (comment["post_id"], comment["post_id"]))
+    # Опционально: обновить счётчик комментариев у поста (если используете отдельное поле)
+    # В вашем случае счётчик вычисляется через COUNT(*) в GET /feed, поэтому ничего не делаем.
     conn.commit()
     conn.close()
-    return {"message": "Comment deleted"}
-
+    return {"message": "Comment deleted successfully"}
 
 
 @app.post("/login")
