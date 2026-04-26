@@ -1,3 +1,5 @@
+// НЕТ объявления API_BASE, getAvatarUrl, escapeHtml – они уже в auth.js
+
 class MessageManager {
     constructor() {
         this.currentConversation = null;
@@ -399,6 +401,11 @@ class MessageManager {
 const messageManager = new MessageManager();
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // Убедимся, что authManager загружен и инициализирован
+    if (typeof authManager === 'undefined') {
+        console.error('authManager not loaded!');
+        return;
+    }
     await authManager.init();
     messageManager.init();
 });
