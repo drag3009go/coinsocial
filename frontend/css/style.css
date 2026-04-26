@@ -178,10 +178,15 @@ body::before {
 /* ===== Форма поста ===== */
 
 .post {
-    background-color: rgba(255, 255, 255, 0.9); /* 90% непрозрачности, 10% прозрачности */
-    backdrop-filter: blur(2px); /* лёгкое размытие для читаемости текста */
+    background-color: rgba(255, 255, 255, 0.5); /* 50% прозрачности фона */
+    backdrop-filter: blur(4px); /* небольшое размытие для читаемости */
+    border-radius: 20px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
-    
+
 .post-form {
     padding: 20px;
 }
