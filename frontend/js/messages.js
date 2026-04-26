@@ -1,5 +1,4 @@
-// Нет объявления API_BASE, getAvatarUrl, escapeHtml – они в auth.js
-
+// Полный messages.js (без дублирования API_BASE, с автообновлением и уведомлениями)
 class MessageManager {
     constructor() {
         this.currentConversation = null;
@@ -16,7 +15,6 @@ class MessageManager {
         this.setupEventListeners();
         this.startAutoRefresh();
         this.startNotificationChecker();
-        // Просим разрешение на уведомления (если браузер поддерживает)
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
@@ -24,84 +22,55 @@ class MessageManager {
 
     setupEventListeners() {
         const messageInput = document.getElementById('messageInput');
-        if (messageInput) {
-            messageInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') this.sendMessage();
-            });
-        }
-
+        if (messageInput) messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.sendMessage(); });
         const searchInput = document.getElementById('userSearch');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                if (!this.showAllUsers) this.searchUsers(e.target.value);
-                else {
-                    if (e.target.value.length >= 2) this.searchUsers(e.target.value);
-                    else this.loadAllUsers();
-                }
-            });
-        }
-
+        if (searchInput) searchInput.addEventListener('input', (e) => {
+            if (!this.showAllUsers) this.searchUsers(e.target.value);
+            else {
+                if (e.target.value.length >= 2) this.searchUsers(e.target.value);
+                else this.loadAllUsers();
+            }
+        });
         const toggleBtn = document.getElementById('toggleUsersBtn');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
-                this.showAllUsers = !this.showAllUsers;
-                toggleBtn.textContent = this.showAllUsers ? '💬 Диалоги' : '👥 Все пользователи';
-                if (this.showAllUsers) this.loadAllUsers();
-                else {
-                    this.renderConversations();
-                    document.getElementById('userSearch').value = '';
-                }
-            });
-        }
-
+        if (toggleBtn) toggleBtn.addEventListener('click', () => {
+            this.showAllUsers = !this.showAllUsers;
+            toggleBtn.textContent = this.showAllUsers ? '💬 Диалоги' : '👥 Все пользователи';
+            if (this.showAllUsers) this.loadAllUsers();
+            else { this.renderConversations(); document.getElementById('userSearch').value = ''; }
+        });
         const sendBtn = document.getElementById('sendMsgBtn');
-        if (sendBtn) {
-            sendBtn.addEventListener('click', () => this.sendMessage());
-        }
+        if (sendBtn) sendBtn.addEventListener('click', () => this.sendMessage());
     }
 
     async loadConversations() {
         try {
-            const response = await fetch(`${API_BASE}/messages/conversations`, {
-                headers: authManager.getAuthHeaders()
-            });
+            const response = await fetch(`${API_BASE}/messages/conversations`, { headers: authManager.getAuthHeaders() });
             if (response.ok) {
                 this.conversations = await response.json();
                 if (!this.showAllUsers) this.renderConversations();
                 return this.conversations;
-            } else {
-                throw new Error('Failed to load conversations');
-            }
-        } catch (error) {
-            console.error('Error loading conversations:', error);
-            return [];
-        }
+            } else throw new Error('Failed to load conversations');
+        } catch (error) { console.error(error); return []; }
     }
 
     renderConversations() {
         const container = document.getElementById('conversationsList');
         if (!container) return;
-        if (this.conversations.length === 0) {
-            container.innerHTML = '<div class="loading">Нет сообщений</div>';
-            return;
-        }
+        if (!this.conversations.length) { container.innerHTML = '<div class="loading">Нет сообщений</div>'; return; }
         container.innerHTML = this.conversations.map(conv => `
             <div class="conversation-item ${this.currentConversation === conv.user_id ? 'active' : ''}" data-peer-id="${conv.user_id}">
                 <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
                 <div class="conversation-info">
                     <div class="username">${escapeHtml(conv.username)}</div>
-                    <div class="last-message">${escapeHtml(conv.last_message.substring(0, 30))}${conv.last_message.length > 30 ? '...' : ''}</div>
+                    <div class="last-message">${escapeHtml(conv.last_message.substring(0,30))}${conv.last_message.length>30?'...':''}</div>
                 </div>
                 ${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count}</span>` : ''}
             </div>
         `).join('');
-
-        document.querySelectorAll('.conversation-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const peerId = item.getAttribute('data-peer-id');
-                if (peerId) this.selectConversation(peerId);
-            });
-        });
+        document.querySelectorAll('.conversation-item').forEach(item => item.addEventListener('click', () => {
+            const peerId = item.getAttribute('data-peer-id');
+            if (peerId) this.selectConversation(peerId);
+        }));
     }
 
     async selectConversation(userId) {
@@ -113,23 +82,15 @@ class MessageManager {
     }
 
     enableMessageInput() {
-        const messageInput = document.getElementById('messageInput');
-        const sendButton = document.getElementById('sendMsgBtn');
-        if (messageInput && sendButton) {
-            messageInput.disabled = false;
-            sendButton.disabled = false;
-            messageInput.placeholder = "Введите сообщение...";
-        }
+        const input = document.getElementById('messageInput');
+        const btn = document.getElementById('sendMsgBtn');
+        if (input && btn) { input.disabled = false; btn.disabled = false; input.placeholder = "Введите сообщение..."; }
     }
 
     disableMessageInput() {
-        const messageInput = document.getElementById('messageInput');
-        const sendButton = document.getElementById('sendMsgBtn');
-        if (messageInput && sendButton) {
-            messageInput.disabled = true;
-            sendButton.disabled = true;
-            messageInput.placeholder = "Выберите диалог для общения";
-        }
+        const input = document.getElementById('messageInput');
+        const btn = document.getElementById('sendMsgBtn');
+        if (input && btn) { input.disabled = true; btn.disabled = true; input.placeholder = "Выберите диалог для общения"; }
     }
 
     updateChatHeader() {
@@ -137,33 +98,16 @@ class MessageManager {
         if (!header) return;
         if (this.currentConversation) {
             const conv = this.conversations.find(c => c.user_id === this.currentConversation);
-            if (conv) {
-                header.innerHTML = `
-                    <div class="user-info">
-                        <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
-                        <div class="username">${escapeHtml(conv.username)}</div>
-                    </div>
-                `;
-            }
-        } else {
-            header.innerHTML = '<div>Выберите диалог</div>';
-        }
+            if (conv) header.innerHTML = `<div class="user-info"><img src="${getAvatarUrl(conv.avatar_url)}" class="avatar"><div class="username">${escapeHtml(conv.username)}</div></div>`;
+        } else header.innerHTML = '<div>Выберите диалог</div>';
     }
 
     async loadMessages(userId) {
         try {
-            const response = await fetch(`${API_BASE}/messages/${userId}`, {
-                headers: authManager.getAuthHeaders()
-            });
-            if (response.ok) {
-                this.messages = await response.json();
-                this.renderMessages();
-            } else {
-                throw new Error('Failed to load messages');
-            }
-        } catch (error) {
-            console.error('Error loading messages:', error);
-        }
+            const response = await fetch(`${API_BASE}/messages/${userId}`, { headers: authManager.getAuthHeaders() });
+            if (response.ok) { this.messages = await response.json(); this.renderMessages(); }
+            else throw new Error('Failed to load messages');
+        } catch (error) { console.error(error); }
     }
 
     renderMessages() {
@@ -171,16 +115,12 @@ class MessageManager {
         if (!container) return;
         const currentUser = authManager.getCurrentUser();
         if (!currentUser) return;
-
-        container.innerHTML = this.messages.map(msg => {
-            const isSent = msg.sender_id === currentUser.id;
-            return `
-                <div class="message ${isSent ? 'sent' : 'received'}">
-                    <div class="message-content">${escapeHtml(msg.content)}</div>
-                    <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
-                </div>
-            `;
-        }).join('');
+        container.innerHTML = this.messages.map(msg => `
+            <div class="message ${msg.sender_id === currentUser.id ? 'sent' : 'received'}">
+                <div class="message-content">${escapeHtml(msg.content)}</div>
+                <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' })}</div>
+            </div>
+        `).join('');
         container.scrollTop = container.scrollHeight;
     }
 
@@ -188,87 +128,49 @@ class MessageManager {
         const input = document.getElementById('messageInput');
         const content = input.value.trim();
         if (!content || !this.currentConversation) return;
-
         const sendBtn = document.getElementById('sendMsgBtn');
         sendBtn.disabled = true;
-
-        // Оптимистичная отправка
         const tempId = 'temp_' + Date.now();
         const currentUser = authManager.getCurrentUser();
-        const tempMsg = {
-            id: tempId,
-            sender_id: currentUser.id,
-            content: content,
-            timestamp: new Date().toISOString(),
-            is_temp: true
-        };
-        this.messages.push(tempMsg);
+        this.messages.push({ id: tempId, sender_id: currentUser.id, content: content, timestamp: new Date().toISOString(), is_temp: true });
         this.renderMessages();
         input.value = '';
-
         try {
             const response = await fetch(`${API_BASE}/messages/send`, {
                 method: 'POST',
                 headers: authManager.getAuthHeaders(),
-                body: JSON.stringify({
-                    receiver_id: this.currentConversation,
-                    content: content
-                })
+                body: JSON.stringify({ receiver_id: this.currentConversation, content: content })
             });
             if (response.ok) {
                 this.messages = this.messages.filter(m => m.id !== tempId);
                 await this.loadMessages(this.currentConversation);
-            } else {
-                throw new Error('Failed to send');
-            }
+            } else throw new Error('Failed to send');
         } catch (error) {
             console.error(error);
             const msgDiv = document.querySelector(`.message[data-temp-id="${tempId}"]`);
             if (msgDiv) msgDiv.classList.add('error');
-        } finally {
-            sendBtn.disabled = false;
-        }
+        } finally { sendBtn.disabled = false; }
     }
 
     async searchUsers(query) {
-        if (query.length < 2) {
-            document.getElementById('searchResults').innerHTML = '';
-            return;
-        }
+        if (query.length < 2) { document.getElementById('searchResults').innerHTML = ''; return; }
         try {
-            const response = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(query)}`, {
-                headers: authManager.getAuthHeaders()
-            });
-            if (response.ok) {
-                const users = await response.json();
-                this.renderUserList(users);
-            }
-        } catch (error) {
-            console.error(error);
-        }
+            const response = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(query)}`, { headers: authManager.getAuthHeaders() });
+            if (response.ok) { const users = await response.json(); this.renderUserList(users); }
+        } catch (error) { console.error(error); }
     }
 
     async loadAllUsers() {
         try {
-            const response = await fetch(`${API_BASE}/users`, {
-                headers: authManager.getAuthHeaders()
-            });
-            if (response.ok) {
-                const users = await response.json();
-                this.renderUserList(users);
-            }
-        } catch (error) {
-            console.error(error);
-        }
+            const response = await fetch(`${API_BASE}/users`, { headers: authManager.getAuthHeaders() });
+            if (response.ok) { const users = await response.json(); this.renderUserList(users); }
+        } catch (error) { console.error(error); }
     }
 
     renderUserList(users) {
         const container = document.getElementById('searchResults');
         if (!container) return;
-        if (users.length === 0) {
-            container.innerHTML = '<div class="loading">Нет пользователей</div>';
-            return;
-        }
+        if (!users.length) { container.innerHTML = '<div class="loading">Нет пользователей</div>'; return; }
         container.innerHTML = users.map(user => `
             <div class="conversation-item" data-peer-id="${user.id}">
                 <img src="${getAvatarUrl(user.avatar_url)}" class="avatar">
@@ -278,13 +180,10 @@ class MessageManager {
                 </div>
             </div>
         `).join('');
-
-        document.querySelectorAll('#searchResults .conversation-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const peerId = item.getAttribute('data-peer-id');
-                if (peerId) this.startNewConversation(peerId);
-            });
-        });
+        document.querySelectorAll('#searchResults .conversation-item').forEach(item => item.addEventListener('click', () => {
+            const peerId = item.getAttribute('data-peer-id');
+            if (peerId) this.startNewConversation(peerId);
+        }));
     }
 
     async startNewConversation(userId) {
@@ -293,19 +192,10 @@ class MessageManager {
         document.getElementById('userSearch').value = '';
         document.getElementById('searchResults').innerHTML = '';
         if (!this.conversations.find(c => c.user_id === userId)) {
-            const userResponse = await fetch(`${API_BASE}/users/${userId}`, {
-                headers: authManager.getAuthHeaders()
-            });
+            const userResponse = await fetch(`${API_BASE}/users/${userId}`, { headers: authManager.getAuthHeaders() });
             if (userResponse.ok) {
                 const user = await userResponse.json();
-                this.conversations.unshift({
-                    user_id: user.id,
-                    username: user.username,
-                    avatar_url: user.avatar_url,
-                    last_message: 'Новый диалог',
-                    timestamp: new Date().toISOString(),
-                    unread_count: 0
-                });
+                this.conversations.unshift({ user_id: user.id, username: user.username, avatar_url: user.avatar_url, last_message: 'Новый диалог', timestamp: new Date().toISOString(), unread_count: 0 });
             }
         }
         this.renderConversations();
@@ -316,20 +206,13 @@ class MessageManager {
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
         const refresh = () => {
-            if (this.currentConversation) {
-                this.loadMessages(this.currentConversation);
-            }
+            if (this.currentConversation) this.loadMessages(this.currentConversation);
             this.loadConversations();
         };
-        this.autoRefreshInterval = setInterval(refresh, 3000);
+        this.autoRefreshInterval = setInterval(refresh, 5000);
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-            } else {
-                if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-                this.autoRefreshInterval = setInterval(refresh, 3000);
-                refresh();
-            }
+            if (document.hidden) { if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval); }
+            else { if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval); this.autoRefreshInterval = setInterval(refresh, 5000); refresh(); }
         });
     }
 
@@ -344,131 +227,31 @@ class MessageManager {
             }
             this.lastUnreadCount = totalUnread;
             this.updateNotificationBadge(totalUnread);
-        }, 10000);
+        }, 15000);
     }
 
     updateNotificationBadge(unreadCount) {
         const msgLink = document.querySelector('.nav-button[href="messages.html"]');
         if (msgLink) {
             let badge = msgLink.querySelector('.notification-badge');
-            if (!badge && unreadCount > 0) {
-                badge = document.createElement('span');
-                badge.className = 'notification-badge';
-                msgLink.appendChild(badge);
-            }
-            if (badge) {
-                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
-                badge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
-            }
+            if (!badge && unreadCount > 0) { badge = document.createElement('span'); badge.className = 'notification-badge'; msgLink.appendChild(badge); }
+            if (badge) { badge.textContent = unreadCount > 99 ? '99+' : unreadCount; badge.style.display = unreadCount > 0 ? 'inline-block' : 'none'; }
         }
     }
 
     showNotification(title, body) {
         if (!('Notification' in window)) return;
-        if (Notification.permission === 'granted') {
-            new Notification(title, { body, icon: '/favicon.ico' });
-        } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission();
-        }
-        // также показываем тост
-        const toast = document.createElement('div');
-        toast.textContent = body;
-        toast.style.position = 'fixed';
-        toast.style.bottom = '20px';
-        toast.style.right = '20px';
-        toast.style.backgroundColor = '#333';
-        toast.style.color = '#fff';
-        toast.style.padding = '10px 20px';
-        toast.style.borderRadius = '8px';
-        toast.style.zIndex = '9999';
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 4000);
+        if (Notification.permission === 'granted') new Notification(title, { body, icon: '/favicon.ico' });
+        else if (Notification.permission !== 'denied') Notification.requestPermission();
+        if (window.showToast) window.showToast(body, 'info', 5000);
     }
 }
 
 const messageManager = new MessageManager();
 
 document.addEventListener('DOMContentLoaded', async () => {
-    if (typeof authManager === 'undefined') {
-        console.error('authManager not loaded!');
-        return;
-    }
-    await authManager.init();
-    messageManager.init();
-});
-
-// Функция для преобразования VAPID публичного ключа
-function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-}
-
-async function registerServiceWorker() {
-    console.log('1. registerServiceWorker вызвана');
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        console.warn('Push не поддерживается');
-        return;
-    }
-    try {
-        const registration = await navigator.serviceWorker.register('/sw.js');
-        console.log('Service Worker зарегистрирован');
-
-        // Запрашиваем разрешение на уведомления, если ещё нет
-        if (Notification.permission === 'default') {
-            await Notification.requestPermission();
-        }
-        if (Notification.permission !== 'granted') {
-            console.warn('Разрешение на уведомления не получено');
-            return;
-        }
-
-        // Получаем VAPID публичный ключ из переменной окружения (должен быть на странице)
-        const vapidPublicKey = window.VAPID_PUBLIC_KEY;
-        if (!vapidPublicKey) {
-            console.error('VAPID_PUBLIC_KEY не задан');
-            return;
-        }
-
-        const subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-        });
-
-        // Отправляем подписку на сервер
-        await fetch(`${API_BASE}/push/subscribe`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify(subscription)
-        });
-        console.log('Push-подписка отправлена');
-    } catch (err) {
-        console.error('Ошибка регистрации push:', err);
-    }
-}
-
-// Запускаем регистрацию после загрузки страницы (только если пользователь авторизован)
-document.addEventListener('DOMContentLoaded', async () => {
-    if (authManager && authManager.isAuthenticated()) {
-        await registerServiceWorker();
+    if (typeof authManager !== 'undefined') {
+        await authManager.init();
+        messageManager.init();
     }
 });
-document.addEventListener('DOMContentLoaded', async () => {
-    if (authManager && authManager.isAuthenticated()) {
-        await registerServiceWorker();
-    }
-});
-
-setTimeout(() => {
-    if (typeof authManager !== 'undefined' && authManager.isAuthenticated()) {
-        registerServiceWorker();
-    }
-}, 1000);
