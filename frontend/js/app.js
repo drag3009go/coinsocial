@@ -39,7 +39,7 @@ class App {
                 await this.refreshFeed();
                 await this.refreshOpenComments();
             }
-        }, 10000); // 10 секунд
+        }, 5000); // 10 секунд
     }
 
     async refreshFeed() {
