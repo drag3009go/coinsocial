@@ -1,5 +1,6 @@
 import os
 import bcrypt
+import json
 from datetime import datetime, timedelta
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -103,7 +104,7 @@ def init_db():
         )
     ''')
 
-    # uploaded_files (для отслеживания файлов в Storage)
+    # uploaded_files
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS uploaded_files (
             id TEXT PRIMARY KEY,
@@ -115,6 +116,16 @@ def init_db():
             is_avatar BOOLEAN DEFAULT FALSE,
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
             FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE
+        )
+    ''')
+
+    # push_subscriptions (добавлено)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            user_id TEXT PRIMARY KEY,
+            subscription JSONB NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
 
@@ -160,3 +171,26 @@ def delete_old_files(older_than_hours=92):
         cursor.execute("DELETE FROM uploaded_files WHERE id = %s", (file["id"],))
     conn.commit()
     conn.close()
+
+# ---------- Push-уведомления ----------
+def save_push_subscription(user_id: str, subscription: dict):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO push_subscriptions (user_id, subscription, updated_at)
+        VALUES (%s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id) DO UPDATE
+        SET subscription = EXCLUDED.subscription, updated_at = CURRENT_TIMESTAMP
+    """, (user_id, json.dumps(subscription)))
+    conn.commit()
+    conn.close()
+
+def get_push_subscription(user_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT subscription FROM push_subscriptions WHERE user_id = %s", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return json.loads(row["subscription"])
+    return None
