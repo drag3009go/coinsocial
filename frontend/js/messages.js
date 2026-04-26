@@ -410,6 +410,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 async function registerServiceWorker() {
+    console.log('1. registerServiceWorker вызвана');
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
         console.warn('Push не поддерживается');
         return;
