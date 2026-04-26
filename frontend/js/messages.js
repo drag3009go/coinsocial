@@ -461,3 +461,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         await registerServiceWorker();
     }
 });
+document.addEventListener('DOMContentLoaded', async () => {
+    if (authManager && authManager.isAuthenticated()) {
+        await registerServiceWorker();
+    }
+});
