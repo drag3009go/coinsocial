@@ -4,7 +4,7 @@ class App {
         this.posts = [];
         this.isLoading = false;
         this.offset = 0;
-        this.limit = 20;
+        this.limit = 15;
         this.hasMore = true;
         this.updateInterval = null;
         this.openCommentsState = new Map();
