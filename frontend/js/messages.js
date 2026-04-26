@@ -9,12 +9,20 @@ class MessageManager {
         this.lastUnreadCount = 0;
     }
 
-    async init() {
-        await this.loadConversations();
-        this.setupEventListeners();
-        this.startAutoRefresh();
-        this.startNotificationChecker(); // запускаем проверку уведомлений
+
+    requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
     }
+}
+    
+    async init() {
+    await this.loadConversations();
+    this.setupEventListeners();
+    this.startAutoRefresh();
+    this.startNotificationChecker();
+    this.requestNotificationPermission(); // запросить разрешение
+}
 
     setupEventListeners() {
         const messageInput = document.getElementById('messageInput');
@@ -355,25 +363,42 @@ class MessageManager {
     }
 
     startAutoRefresh() {
-        this.autoRefreshInterval = setInterval(() => {
-            if (this.currentConversation) this.loadMessages(this.currentConversation);
-            this.loadConversations();
-        }, 3000);
-    }
+    if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+    
+    const refresh = () => {
+        if (this.currentConversation) {
+            this.loadMessages(this.currentConversation);
+        }
+        this.loadConversations();
+    };
+    
+    this.autoRefreshInterval = setInterval(refresh, 3000);
+    
+    // Дополнительно: слушаем видимость страницы, чтобы не обновлять в фоне (экономия)
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+        } else {
+            if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+            this.autoRefreshInterval = setInterval(refresh, 3000);
+            refresh(); // сразу обновить при возвращении
+        }
+    });
+}
 
-    startNotificationChecker() {
-        this.notificationInterval = setInterval(async () => {
-            const conversations = await this.loadConversations();
-            if (!conversations) return;
-            const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
-            if (totalUnread > this.lastUnreadCount && totalUnread > 0 && !window.location.pathname.includes('messages.html')) {
-                // Показываем уведомление, только если не на странице сообщений
-                this.showNotification(`У вас ${totalUnread} новое сообщение${totalUnread > 1 ? 'ний' : ''}`);
-            }
-            this.lastUnreadCount = totalUnread;
-            this.updateNotificationBadge(totalUnread);
-        }, 10000); // каждые 10 секунд
-    }
+   startNotificationChecker() {
+    this.notificationInterval = setInterval(async () => {
+        const conversations = await this.loadConversations();
+        if (!conversations) return;
+        const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+        if (totalUnread > this.lastUnreadCount && totalUnread > 0 && !document.hasFocus()) {
+            // Показываем уведомление только если страница не в фокусе
+            this.showNotification('Монеточка', `У вас ${totalUnread} новое сообщение${totalUnread > 1 ? 'ний' : ''}`);
+        }
+        this.lastUnreadCount = totalUnread;
+        this.updateNotificationBadge(totalUnread);
+    }, 10000);
+}
 
     updateNotificationBadge(unreadCount = null) {
         if (unreadCount === null) {
@@ -400,19 +425,20 @@ class MessageManager {
         }
     }
 
-    showNotification(message) {
-        // Всплывающее уведомление (HTML5)
-        if (Notification.permission === 'granted') {
-            new Notification('Монеточка', { body: message, icon: '/favicon.ico' });
-        } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission().then(perm => {
-                if (perm === 'granted') new Notification('Монеточка', { body: message });
-            });
-        }
-        // Также показываем временный тост
-        this.showToast(message);
+    showNotification(title, body) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+        new Notification(title, { body, icon: '/favicon.ico' });
+    } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(perm => {
+            if (perm === 'granted') new Notification(title, { body });
+        });
     }
+    // также показываем тост
+    this.showToast(body);
+}
 
+    
     showToast(message) {
         let toast = document.createElement('div');
         toast.textContent = message;
