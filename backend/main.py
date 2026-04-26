@@ -588,16 +588,45 @@ async def upload_media(file: UploadFile = File(...), current_user: dict = Depend
 
 @app.post("/upload/avatar")
 async def upload_avatar(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    # Получаем старый аватар
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT avatar_url FROM users WHERE id = %s", (current_user["id"],))
+    row = cursor.fetchone()
+    old_avatar_url = row["avatar_url"] if row else None
+    if old_avatar_url:
+        delete_file(old_avatar_url)  # удаляем старый файл из Storage
+
     content = await file.read()
     public_url = upload_file(content, file.filename, file.content_type, is_avatar=True)
     file_id = str(uuid.uuid4())
     save_uploaded_file(file_id, public_url, "avatars", current_user["id"], is_avatar=True)
-    conn = get_db_connection()
-    cursor = conn.cursor()
     cursor.execute("UPDATE users SET avatar_url = %s WHERE id = %s", (public_url, current_user["id"]))
     conn.commit()
     conn.close()
     return {"avatar_url": public_url}
+
+@app.delete("/posts/{post_id}")
+async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, media_url FROM posts WHERE id = %s", (post_id,))
+    post = cursor.fetchone()
+    if not post:
+        conn.close()
+        raise HTTPException(404, "Post not found")
+    if post["user_id"] != current_user["id"]:
+        conn.close()
+        raise HTTPException(403, "Not authorized")
+    # Удаляем медиафайл, если есть
+    if post["media_url"]:
+        delete_file(post["media_url"])
+        cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (post["media_url"],))
+    # Удаляем пост (каскадно удалятся комментарии, реакции)
+    cursor.execute("DELETE FROM posts WHERE id = %s", (post_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Post deleted"}
 
 # ---------- Подключение фронтенда ----------
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend")
