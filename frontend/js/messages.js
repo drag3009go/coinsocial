@@ -11,13 +11,16 @@ class MessageManager {
         this.lastUnreadCount = 0;
     }
 
-    async init() {
-        await this.loadConversations();
-        this.setupEventListeners();
-        this.startAutoRefresh();
-        this.startNotificationChecker();
-        this.requestNotificationPermission();
+   async init() {
+    await this.loadConversations();
+    this.setupEventListeners();
+    this.startAutoRefresh();
+    this.startNotificationChecker();
+    // Запрашиваем разрешение на уведомления, если ещё не задано
+    if (window.Notification && Notification.permission === 'default') {
+        Notification.requestPermission();
     }
+}
 
     requestNotificationPermission() {
         if ('Notification' in window && Notification.permission === 'default') {
