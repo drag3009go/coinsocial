@@ -396,3 +396,67 @@ document.addEventListener('DOMContentLoaded', async () => {
     await authManager.init();
     messageManager.init();
 });
+
+// Функция для преобразования VAPID публичного ключа
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+async function registerServiceWorker() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn('Push не поддерживается');
+        return;
+    }
+    try {
+        const registration = await navigator.serviceWorker.register('/sw.js');
+        console.log('Service Worker зарегистрирован');
+
+        // Запрашиваем разрешение на уведомления, если ещё нет
+        if (Notification.permission === 'default') {
+            await Notification.requestPermission();
+        }
+        if (Notification.permission !== 'granted') {
+            console.warn('Разрешение на уведомления не получено');
+            return;
+        }
+
+        // Получаем VAPID публичный ключ из переменной окружения (должен быть на странице)
+        const vapidPublicKey = window.VAPID_PUBLIC_KEY;
+        if (!vapidPublicKey) {
+            console.error('VAPID_PUBLIC_KEY не задан');
+            return;
+        }
+
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+        });
+
+        // Отправляем подписку на сервер
+        await fetch(`${API_BASE}/push/subscribe`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(subscription)
+        });
+        console.log('Push-подписка отправлена');
+    } catch (err) {
+        console.error('Ошибка регистрации push:', err);
+    }
+}
+
+// Запускаем регистрацию после загрузки страницы (только если пользователь авторизован)
+document.addEventListener('DOMContentLoaded', async () => {
+    if (authManager && authManager.isAuthenticated()) {
+        await registerServiceWorker();
+    }
+});
