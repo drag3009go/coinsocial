@@ -96,6 +96,10 @@ class AuthManager {
         }
     }
 
+
+    
+    
+
     logout() {
         this.token = null;
         this.currentUser = null;
@@ -193,7 +197,17 @@ class AuthManager {
             });
         }
     }
+
+    function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+window.escapeHtml = escapeHtml;
+    
 }
 
 const authManager = new AuthManager();
 document.addEventListener('DOMContentLoaded', async () => { await authManager.init(); });
+
+
