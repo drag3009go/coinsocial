@@ -69,14 +69,16 @@ class App {
     }
 
     renderFeed() {
-        const feed = document.getElementById('feed');
-        if (!feed) return;
-        if (this.posts.length === 0) {
-            feed.innerHTML = '<div class="loading">Пока нет постов. Будьте первым!</div>';
-            return;
-        }
-        feed.innerHTML = this.posts.map(post => this.createPostElement(post)).join('');
-        this.attachCommentDraftListeners();
+    const feed = document.getElementById('feed');
+    if (!feed) return;
+    if (this.posts.length === 0) {
+        feed.innerHTML = '<div class="loading">Пока нет постов. Будьте первым!</div>';
+        return;
+    }
+    feed.innerHTML = this.posts.map(post => this.createPostElement(post)).join('');
+    this.attachCommentDraftListeners();
+    // Дополнительно: скрыть все комментарии (хотя они уже style="display: none")
+    document.querySelectorAll('.comments-list').forEach(list => list.style.display = 'none');
     }
 
     getAvatarUrl(avatarUrl) {
