@@ -1,4 +1,4 @@
-// НЕТ объявления API_BASE, getAvatarUrl, escapeHtml – они уже в auth.js
+// Нет объявления API_BASE, getAvatarUrl, escapeHtml – они в auth.js
 
 class MessageManager {
     constructor() {
@@ -11,83 +11,15 @@ class MessageManager {
         this.lastUnreadCount = 0;
     }
 
-   async init() {
-    await this.loadConversations();
-    this.setupEventListeners();
-    this.startAutoRefresh();
-    this.startNotificationChecker();
-    // Запрашиваем разрешение на уведомления, если ещё не задано
-    if (window.Notification && Notification.permission === 'default') {
-        Notification.requestPermission();
-    }
-}
-    async function registerServiceWorker() {
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-        try {
-            const registration = await navigator.serviceWorker.register('/sw.js');
-            const subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array('ВАШ_VAPID_PUBLIC_KEY')
-            });
-            // Отправляем subscription на сервер
-            await fetch(`${API_BASE}/push/subscribe`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(subscription)
-            });
-        } catch (err) {
-            console.error('Push registration failed:', err);
-        }
-    }
-}
-
-function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-}
-
-    requestNotificationPermission() {
+    async init() {
+        await this.loadConversations();
+        this.setupEventListeners();
+        this.startAutoRefresh();
+        this.startNotificationChecker();
+        // Просим разрешение на уведомления (если браузер поддерживает)
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
-    }
-
-    showNotification(title, body) {
-        if (!('Notification' in window)) return;
-        if (Notification.permission === 'granted') {
-            new Notification(title, { body, icon: '/favicon.ico' });
-        } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission().then(perm => {
-                if (perm === 'granted') new Notification(title, { body });
-            });
-        }
-        this.showToast(body);
-    }
-
-    showToast(message) {
-        let toast = document.getElementById('messageToast');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'messageToast';
-            toast.style.position = 'fixed';
-            toast.style.bottom = '20px';
-            toast.style.right = '20px';
-            toast.style.backgroundColor = '#333';
-            toast.style.color = '#fff';
-            toast.style.padding = '10px 20px';
-            toast.style.borderRadius = '8px';
-            toast.style.zIndex = '9999';
-            document.body.appendChild(toast);
-        }
-        toast.textContent = message;
-        toast.style.display = 'block';
-        setTimeout(() => toast.style.display = 'none', 4000);
     }
 
     setupEventListeners() {
@@ -260,6 +192,7 @@ function urlBase64ToUint8Array(base64String) {
         const sendBtn = document.getElementById('sendMsgBtn');
         sendBtn.disabled = true;
 
+        // Оптимистичная отправка
         const tempId = 'temp_' + Date.now();
         const currentUser = authManager.getCurrentUser();
         const tempMsg = {
@@ -429,12 +362,33 @@ function urlBase64ToUint8Array(base64String) {
             }
         }
     }
+
+    showNotification(title, body) {
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            new Notification(title, { body, icon: '/favicon.ico' });
+        } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+        // также показываем тост
+        const toast = document.createElement('div');
+        toast.textContent = body;
+        toast.style.position = 'fixed';
+        toast.style.bottom = '20px';
+        toast.style.right = '20px';
+        toast.style.backgroundColor = '#333';
+        toast.style.color = '#fff';
+        toast.style.padding = '10px 20px';
+        toast.style.borderRadius = '8px';
+        toast.style.zIndex = '9999';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
 }
 
 const messageManager = new MessageManager();
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Убедимся, что authManager загружен и инициализирован
     if (typeof authManager === 'undefined') {
         console.error('authManager not loaded!');
         return;
