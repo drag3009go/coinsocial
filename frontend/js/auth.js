@@ -1,6 +1,6 @@
-const API_BASE = 'https://coinsocial.onrender.com'; // замените на ваш домен
+const API_BASE = 'https://coinsocial.onrender.com';
 
-// Глобальные вспомогательные функции
+// Глобальные функции
 function getAvatarUrl(avatarUrl) {
     if (!avatarUrl) return '/default-avatar.png';
     if (avatarUrl.startsWith('/uploads/avatars/')) return '/default-avatar.png';
@@ -8,15 +8,22 @@ function getAvatarUrl(avatarUrl) {
 }
 
 function escapeHtml(str) {
-    if (!str) return '';
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
 }
 
-// Делаем их доступными глобально
+function showToast(message, type = 'info', duration = 5000) {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), duration);
+}
+
 window.getAvatarUrl = getAvatarUrl;
 window.escapeHtml = escapeHtml;
+window.showToast = showToast;
 
 class AuthManager {
     constructor() {
@@ -33,6 +40,8 @@ class AuthManager {
                 console.log('Token is valid, user is authenticated');
                 this.updateUI();
                 this.setupOnlineButton();
+                // Показываем приветствие с количеством непрочитанных сообщений
+                await this.showWelcomeWithUnreadCount();
                 return true;
             } else {
                 console.log('Token is invalid, clearing storage');
@@ -56,9 +65,7 @@ class AuthManager {
                 return true;
             } else if (response.status === 401) {
                 this.clearStorage();
-                if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
-                    window.location.href = 'login.html';
-                }
+                window.location.href = 'login.html';
                 return false;
             }
             return false;
@@ -164,15 +171,22 @@ class AuthManager {
 
     redirectIfNeeded() {
         const currentPage = window.location.pathname;
-        const isAuthPage = currentPage.includes('login.html') || currentPage.includes('register.html') || currentPage.includes('index.html');
-        const isProtectedPage = currentPage.includes('feed.html') || currentPage.includes('profile.html') || currentPage.includes('messages.html') || currentPage.includes('leaderboard.html');
+        const isAuthPage = currentPage.includes('login.html') ||
+            currentPage.includes('register.html') ||
+            currentPage.includes('index.html');
+        const isProtectedPage = currentPage.includes('feed.html') ||
+            currentPage.includes('profile.html') ||
+            currentPage.includes('messages.html') ||
+            currentPage.includes('leaderboard.html');
         if (isProtectedPage && !this.isAuthenticated()) window.location.href = 'login.html';
         else if (isAuthPage && this.isAuthenticated()) window.location.href = 'feed.html';
     }
 
     async fetchOnlineUsers() {
         try {
-            const response = await fetch(`${API_BASE}/online-users`, { headers: this.getAuthHeaders() });
+            const response = await fetch(`${API_BASE}/online-users`, {
+                headers: this.getAuthHeaders()
+            });
             if (response.ok) return await response.json();
         } catch (error) { console.error(error); }
         return [];
@@ -189,7 +203,7 @@ class AuthManager {
             if (users.length === 0) popup.innerHTML = '<div class="online-user">Нет пользователей онлайн</div>';
             else {
                 popup.innerHTML = users.map(u => `
-                    <div class="online-user" onclick="messageManager.startNewConversation('${u.id}')">
+                    <div class="online-user" onclick="window.messageManager?.startNewConversation('${u.id}')">
                         <img src="${getAvatarUrl(u.avatar_url)}">
                         <span>${escapeHtml(u.username)}</span>
                     </div>
@@ -209,16 +223,37 @@ class AuthManager {
             });
         }
     }
+
+    // Приветствие с непрочитанными сообщениями
+    async showWelcomeWithUnreadCount() {
+        if (sessionStorage.getItem('welcomeShown')) return;
+        try {
+            const response = await fetch(`${API_BASE}/messages/conversations`, {
+                headers: this.getAuthHeaders()
+            });
+            if (response.ok) {
+                const conversations = await response.json();
+                const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+                if (totalUnread > 0) {
+                    const username = this.currentUser?.username || 'друг';
+                    const message = `Приветствую, ${username}! Пока вас не было, вам пришло ${totalUnread} новое сообщение${totalUnread > 1 ? 'ний' : ''}. Скорее проверьте их!`;
+                    showToast(message, 'info', 8000);
+                    sessionStorage.setItem('welcomeShown', 'true');
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch unread count:', error);
+        }
+    }
 }
 
-// Синглтон: создаём глобальный экземпляр только один раз
+// Синглтон
 if (!window.authManager) {
     window.authManager = new AuthManager();
 }
 const authManager = window.authManager;
-
-// Инициализация только один раз
 let authInitialized = false;
+
 document.addEventListener('DOMContentLoaded', async function () {
     if (!authInitialized) {
         authInitialized = true;
