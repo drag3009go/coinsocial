@@ -1,3 +1,5 @@
+const API_BASE = window.API_BASE || 'https://coinsocial.onrender.com';
+
 class MessageManager {
     constructor() {
         this.currentConversation = null;
@@ -9,20 +11,51 @@ class MessageManager {
         this.lastUnreadCount = 0;
     }
 
+    async init() {
+        await this.loadConversations();
+        this.setupEventListeners();
+        this.startAutoRefresh();
+        this.startNotificationChecker();
+        this.requestNotificationPermission();
+    }
 
     requestNotificationPermission() {
-    if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
     }
-}
-    
-    async init() {
-    await this.loadConversations();
-    this.setupEventListeners();
-    this.startAutoRefresh();
-    this.startNotificationChecker();
-    this.requestNotificationPermission(); // запросить разрешение
-}
+
+    showNotification(title, body) {
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            new Notification(title, { body, icon: '/favicon.ico' });
+        } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(perm => {
+                if (perm === 'granted') new Notification(title, { body });
+            });
+        }
+        this.showToast(body);
+    }
+
+    showToast(message) {
+        let toast = document.getElementById('messageToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'messageToast';
+            toast.style.position = 'fixed';
+            toast.style.bottom = '20px';
+            toast.style.right = '20px';
+            toast.style.backgroundColor = '#333';
+            toast.style.color = '#fff';
+            toast.style.padding = '10px 20px';
+            toast.style.borderRadius = '8px';
+            toast.style.zIndex = '9999';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.style.display = 'block';
+        setTimeout(() => toast.style.display = 'none', 4000);
+    }
 
     setupEventListeners() {
         const messageInput = document.getElementById('messageInput');
@@ -70,14 +103,12 @@ class MessageManager {
             if (response.ok) {
                 this.conversations = await response.json();
                 if (!this.showAllUsers) this.renderConversations();
-                this.updateNotificationBadge(); // обновляем значок
                 return this.conversations;
             } else {
                 throw new Error('Failed to load conversations');
             }
         } catch (error) {
             console.error('Error loading conversations:', error);
-            this.showError('Failed to load conversations');
             return [];
         }
     }
@@ -93,8 +124,8 @@ class MessageManager {
             <div class="conversation-item ${this.currentConversation === conv.user_id ? 'active' : ''}" data-peer-id="${conv.user_id}">
                 <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
                 <div class="conversation-info">
-                    <div class="username">${conv.username}</div>
-                    <div class="last-message">${this.truncateText(conv.last_message, 30)}</div>
+                    <div class="username">${escapeHtml(conv.username)}</div>
+                    <div class="last-message">${escapeHtml(conv.last_message.substring(0, 30))}${conv.last_message.length > 30 ? '...' : ''}</div>
                 </div>
                 ${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count}</span>` : ''}
             </div>
@@ -114,8 +145,6 @@ class MessageManager {
         this.renderConversations();
         await this.loadMessages(userId);
         this.updateChatHeader();
-        // после открытия диалога сбросим уведомления для этого пользователя
-        await this.loadConversations(); // перезагрузим, чтобы убрать unread_badge
     }
 
     enableMessageInput() {
@@ -147,7 +176,7 @@ class MessageManager {
                 header.innerHTML = `
                     <div class="user-info">
                         <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
-                        <div class="username">${conv.username}</div>
+                        <div class="username">${escapeHtml(conv.username)}</div>
                     </div>
                 `;
             }
@@ -169,112 +198,70 @@ class MessageManager {
             }
         } catch (error) {
             console.error('Error loading messages:', error);
-            this.showError('Failed to load messages');
         }
     }
-
 
     renderMessages() {
-    const container = document.getElementById('chatMessages');
-    if (!container) return;
-    const currentUser = authManager.getCurrentUser();
-    if (!currentUser) return;
+        const container = document.getElementById('chatMessages');
+        if (!container) return;
+        const currentUser = authManager.getCurrentUser();
+        if (!currentUser) return;
 
-    container.innerHTML = this.messages.map(msg => {
-        const isSent = msg.sender_id === currentUser.id;
-        const tempAttr = msg.is_temp ? `data-temp-id="${msg.id}"` : '';
-        return `
-            <div class="message ${isSent ? 'sent' : 'received'}" ${tempAttr}>
-                <div class="message-content">${this.escapeHtml(msg.content)}</div>
-                <div class="message-time">${this.formatTime(msg.timestamp)}</div>
-                ${msg.is_temp ? '<div class="sending">⏳ Отправка...</div>' : ''}
-            </div>
-        `;
-    }).join('');
-    container.scrollTop = container.scrollHeight;
+        container.innerHTML = this.messages.map(msg => {
+            const isSent = msg.sender_id === currentUser.id;
+            return `
+                <div class="message ${isSent ? 'sent' : 'received'}">
+                    <div class="message-content">${escapeHtml(msg.content)}</div>
+                    <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+            `;
+        }).join('');
+        container.scrollTop = container.scrollHeight;
     }
-    
- 
-
 
     async sendMessage() {
-    const input = document.getElementById('messageInput');
-    const content = input.value.trim();
-    if (!content || !this.currentConversation) return;
+        const input = document.getElementById('messageInput');
+        const content = input.value.trim();
+        if (!content || !this.currentConversation) return;
 
-    // Блокируем кнопку и поле ввода
-    const sendBtn = document.getElementById('sendMsgBtn');
-    const messageInput = document.getElementById('messageInput');
-    sendBtn.disabled = true;
-    messageInput.disabled = true;
+        const sendBtn = document.getElementById('sendMsgBtn');
+        sendBtn.disabled = true;
 
-    // Генерируем временный ID и метку времени
-    const tempId = 'temp_' + Date.now() + '_' + Math.random();
-    const tempMsg = {
-        id: tempId,
-        sender_id: authManager.getCurrentUser().id,
-        content: content,
-        timestamp: new Date().toISOString(),
-        is_temp: true
-    };
+        const tempId = 'temp_' + Date.now();
+        const currentUser = authManager.getCurrentUser();
+        const tempMsg = {
+            id: tempId,
+            sender_id: currentUser.id,
+            content: content,
+            timestamp: new Date().toISOString(),
+            is_temp: true
+        };
+        this.messages.push(tempMsg);
+        this.renderMessages();
+        input.value = '';
 
-    // Добавляем временное сообщение в конец списка
-    this.messages.push(tempMsg);
-    this.renderMessages();
-
-    // Очищаем поле ввода и разблокируем его (кнопка остаётся заблокирована до ответа)
-    input.value = '';
-    messageInput.disabled = false;
-    messageInput.focus();
-
-    try {
-        const response = await fetch(`${API_BASE}/messages/send`, {
-            method: 'POST',
-            headers: authManager.getAuthHeaders(),
-            body: JSON.stringify({
-                receiver_id: this.currentConversation,
-                content: content
-            })
-        });
-        if (response.ok) {
-            const data = await response.json();
-            // Удаляем временное сообщение и загружаем реальные сообщения
-            this.messages = this.messages.filter(m => m.id !== tempId);
-            await this.loadMessages(this.currentConversation);
-        } else {
-            throw new Error('Failed to send message');
+        try {
+            const response = await fetch(`${API_BASE}/messages/send`, {
+                method: 'POST',
+                headers: authManager.getAuthHeaders(),
+                body: JSON.stringify({
+                    receiver_id: this.currentConversation,
+                    content: content
+                })
+            });
+            if (response.ok) {
+                this.messages = this.messages.filter(m => m.id !== tempId);
+                await this.loadMessages(this.currentConversation);
+            } else {
+                throw new Error('Failed to send');
+            }
+        } catch (error) {
+            console.error(error);
+            const msgDiv = document.querySelector(`.message[data-temp-id="${tempId}"]`);
+            if (msgDiv) msgDiv.classList.add('error');
+        } finally {
+            sendBtn.disabled = false;
         }
-    } catch (error) {
-        console.error('Error sending message:', error);
-        // Помечаем временное сообщение как ошибка
-        const tempMsgDiv = document.querySelector(`.message[data-temp-id="${tempId}"]`);
-        if (tempMsgDiv) {
-            tempMsgDiv.classList.add('error');
-            tempMsgDiv.innerHTML += '<div class="error-mark">⚠️ Не отправлено</div>';
-        }
-        this.showError('Не удалось отправить сообщение');
-    } finally {
-        sendBtn.disabled = false;
-    }
-    }
-    
-
-    showSendingIndicator() {
-        let indicator = document.getElementById('sendingIndicator');
-        if (!indicator) {
-            const container = document.getElementById('chatMessages');
-            indicator = document.createElement('div');
-            indicator.id = 'sendingIndicator';
-            indicator.className = 'message received';
-            indicator.innerHTML = '<div class="message-content">✏️ Печатает...</div>';
-            container.appendChild(indicator);
-            container.scrollTop = container.scrollHeight;
-        }
-    }
-
-    hideSendingIndicator() {
-        const indicator = document.getElementById('sendingIndicator');
-        if (indicator) indicator.remove();
     }
 
     async searchUsers(query) {
@@ -289,11 +276,9 @@ class MessageManager {
             if (response.ok) {
                 const users = await response.json();
                 this.renderUserList(users);
-            } else {
-                console.error('Search failed with status:', response.status);
             }
         } catch (error) {
-            console.error('Error searching users:', error);
+            console.error(error);
         }
     }
 
@@ -307,7 +292,7 @@ class MessageManager {
                 this.renderUserList(users);
             }
         } catch (error) {
-            console.error('Error loading users:', error);
+            console.error(error);
         }
     }
 
@@ -322,7 +307,7 @@ class MessageManager {
             <div class="conversation-item" data-peer-id="${user.id}">
                 <img src="${getAvatarUrl(user.avatar_url)}" class="avatar">
                 <div class="conversation-info">
-                    <div class="username">${user.username}</div>
+                    <div class="username">${escapeHtml(user.username)}</div>
                     <div class="last-message">${user.coins} монет</div>
                 </div>
             </div>
@@ -363,134 +348,66 @@ class MessageManager {
     }
 
     startAutoRefresh() {
-    if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-    
-    const refresh = () => {
-        if (this.currentConversation) {
-            this.loadMessages(this.currentConversation);
-        }
-        this.loadConversations();
-    };
-    
-    this.autoRefreshInterval = setInterval(refresh, 3000);
-    
-    // Дополнительно: слушаем видимость страницы, чтобы не обновлять в фоне (экономия)
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-        } else {
-            if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-            this.autoRefreshInterval = setInterval(refresh, 3000);
-            refresh(); // сразу обновить при возвращении
-        }
-    });
-}
+        if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+        const refresh = () => {
+            if (this.currentConversation) {
+                this.loadMessages(this.currentConversation);
+            }
+            this.loadConversations();
+        };
+        this.autoRefreshInterval = setInterval(refresh, 3000);
+        // Слушаем видимость страницы
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+            } else {
+                if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+                this.autoRefreshInterval = setInterval(refresh, 3000);
+                refresh();
+            }
+        });
+    }
 
-   startNotificationChecker() {
-    this.notificationInterval = setInterval(async () => {
-        const conversations = await this.loadConversations();
-        if (!conversations) return;
-        const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
-        if (totalUnread > this.lastUnreadCount && totalUnread > 0 && !document.hasFocus()) {
-            // Показываем уведомление только если страница не в фокусе
-            this.showNotification('Монеточка', `У вас ${totalUnread} новое сообщение${totalUnread > 1 ? 'ний' : ''}`);
-        }
-        this.lastUnreadCount = totalUnread;
-        this.updateNotificationBadge(totalUnread);
-    }, 10000);
-}
+    startNotificationChecker() {
+        if (this.notificationInterval) clearInterval(this.notificationInterval);
+        this.notificationInterval = setInterval(async () => {
+            const conversations = await this.loadConversations();
+            if (!conversations) return;
+            const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+            if (totalUnread > this.lastUnreadCount && totalUnread > 0 && !document.hasFocus()) {
+                this.showNotification('Монеточка', `У вас ${totalUnread} новое сообщение${totalUnread > 1 ? 'ний' : ''}`);
+            }
+            this.lastUnreadCount = totalUnread;
+            this.updateNotificationBadge(totalUnread);
+        }, 10000);
+    }
 
-    updateNotificationBadge(unreadCount = null) {
-        if (unreadCount === null) {
-            // пересчитаем по текущим разговорам
-            unreadCount = this.conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
-        }
-        // Сохраняем в глобальную переменную или обновляем иконку в шапке
+    updateNotificationBadge(unreadCount) {
         const msgLink = document.querySelector('.nav-button[href="messages.html"]');
         if (msgLink) {
-            const oldBadge = msgLink.querySelector('.notification-badge');
-            if (oldBadge) oldBadge.remove();
-            if (unreadCount > 0) {
-                const badge = document.createElement('span');
+            let badge = msgLink.querySelector('.notification-badge');
+            if (!badge && unreadCount > 0) {
+                badge = document.createElement('span');
                 badge.className = 'notification-badge';
-                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
-                badge.style.backgroundColor = '#ef4444';
-                badge.style.color = 'white';
-                badge.style.borderRadius = '50%';
-                badge.style.padding = '2px 6px';
-                badge.style.fontSize = '12px';
-                badge.style.marginLeft = '5px';
                 msgLink.appendChild(badge);
+            }
+            if (badge) {
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                badge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
             }
         }
     }
-
-    showNotification(title, body) {
-    if (!('Notification' in window)) return;
-    if (Notification.permission === 'granted') {
-        new Notification(title, { body, icon: '/favicon.ico' });
-    } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(perm => {
-            if (perm === 'granted') new Notification(title, { body });
-        });
-    }
-    // также показываем тост
-    this.showToast(body);
 }
 
-    
-    showToast(message) {
-        let toast = document.createElement('div');
-        toast.textContent = message;
-        toast.style.position = 'fixed';
-        toast.style.bottom = '20px';
-        toast.style.right = '20px';
-        toast.style.backgroundColor = '#333';
-        toast.style.color = '#fff';
-        toast.style.padding = '10px 20px';
-        toast.style.borderRadius = '8px';
-        toast.style.zIndex = '9999';
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 4000);
-    }
-
-    stopAutoRefresh() {
-        if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-        if (this.notificationInterval) clearInterval(this.notificationInterval);
-    }
-
-    formatTime(timestamp) {
-        return new Date(timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    }
-
-    truncateText(text, maxLength) {
-        return text.length <= maxLength ? text : text.substring(0, maxLength) + '...';
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    showError(message) {
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error';
-        errorDiv.textContent = message;
-        errorDiv.style.position = 'fixed';
-        errorDiv.style.top = '20px';
-        errorDiv.style.right = '20px';
-        errorDiv.style.zIndex = '1000';
-        document.body.appendChild(errorDiv);
-        setTimeout(() => errorDiv.remove(), 5000);
-    }
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 const messageManager = new MessageManager();
 
-document.addEventListener('DOMContentLoaded', async function () {
+document.addEventListener('DOMContentLoaded', async () => {
     await authManager.init();
     messageManager.init();
-    // запросить разрешение на уведомления
-    if (Notification.permission === 'default') Notification.requestPermission();
 });
