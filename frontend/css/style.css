@@ -17,6 +17,48 @@ body {
     padding: 20px;
 }
 
+/* Фоновая картинка с затемнением */
+body {
+    background-image: url('/background.jpg');
+    background-size: cover;
+    background-attachment: fixed;
+    background-position: center;
+    background-repeat: no-repeat;
+    margin: 0;
+    padding: 0;
+    position: relative;
+}
+
+/* Затемнение через псевдоэлемент */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.55); /* затемнение 55% */
+    z-index: -1;
+}
+
+/* Чтобы контент был полупрозрачным и читался */
+.container, .header, .post-form, .post, .auth-card, .profile-header, 
+.messages-container, .chat-area, .conversations-sidebar {
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 16px;
+    backdrop-filter: blur(2px); /* лёгкое размытие для красоты (опционально) */
+}
+
+/* Для боковой панели сообщений */
+.conversations-sidebar, .chat-area {
+    background-color: rgba(255, 255, 255, 0.85);
+}
+
+/* Для чистоты инпутов */
+input, textarea, button {
+    background-color: rgba(255, 255, 255, 0.95);
+}
+
 /* ===== Шапка ===== */
 .header {
     display: flex;
