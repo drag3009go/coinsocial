@@ -116,6 +116,29 @@ async def register(user_data: UserCreate):
     access_token = create_access_token(data={"sub": user_id})
     return {"access_token": access_token, "token_type": "bearer", "user_id": user_id}
 
+
+@app.delete("/comments/{comment_id}")
+async def delete_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, post_id FROM comments WHERE id = %s", (comment_id,))
+    comment = cursor.fetchone()
+    if not comment:
+        conn.close()
+        raise HTTPException(404, "Comment not found")
+    if comment["user_id"] != current_user["id"]:
+        conn.close()
+        raise HTTPException(403, "Not authorized to delete this comment")
+    # Удаляем комментарий (каскадно удалятся ответы)
+    cursor.execute("DELETE FROM comments WHERE id = %s", (comment_id,))
+    # Обновляем счётчик комментариев у поста
+    cursor.execute("UPDATE posts SET comments_count = (SELECT COUNT(*) FROM comments WHERE post_id = %s) WHERE id = %s", (comment["post_id"], comment["post_id"]))
+    conn.commit()
+    conn.close()
+    return {"message": "Comment deleted"}
+
+
+
 @app.post("/login")
 async def login(login_data: UserLogin):
     logger.info(f"POST /login called with email: {login_data.email}")
