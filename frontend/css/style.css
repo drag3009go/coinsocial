@@ -193,9 +193,22 @@ body::before {
 
 .post-actions {
     display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
     gap: 12px;
-    margin-top: 12px;
-    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+/* Отменяем вертикальное расположение на мобильных */
+@media (max-width: 700px) {
+    .post-actions {
+        flex-direction: row !important;
+        flex-wrap: wrap !important; /* при очень маленькой ширине можно разрешить перенос, но оставить строкой */
+    }
+    .post-actions .action-button {
+        flex: 0 0 auto;
+    }
 }
 
 .file-upload {
