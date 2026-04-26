@@ -1,5 +1,3 @@
-const API_BASE = window.API_BASE || 'https://coinsocial.onrender.com';
-
 class MessageManager {
     constructor() {
         this.currentConversation = null;
@@ -356,7 +354,6 @@ class MessageManager {
             this.loadConversations();
         };
         this.autoRefreshInterval = setInterval(refresh, 3000);
-        // Слушаем видимость страницы
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
@@ -399,11 +396,15 @@ class MessageManager {
     }
 }
 
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+// Вспомогательная функция (если не определена глобально)
+if (typeof escapeHtml !== 'function') {
+    window.escapeHtml = function(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    };
 }
+const escapeHtml = window.escapeHtml;
 
 const messageManager = new MessageManager();
 
