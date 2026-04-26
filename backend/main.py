@@ -31,8 +31,8 @@ async def delete_old_posts_and_messages():
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cutoff_64 = (datetime.now() - timedelta(hours=64)).isoformat()
-            cutoff_92 = (datetime.now() - timedelta(hours=92)).isoformat()
+            cutoff_64 = (datetime.now() - timedelta(hours=512)).isoformat()
+            cutoff_92 = (datetime.now() - timedelta(hours=512)).isoformat()
 
             # 1. Удаляем старые посты (получаем их id)
             cursor.execute("DELETE FROM posts WHERE timestamp < %s RETURNING id", (cutoff_64,))
@@ -51,7 +51,7 @@ async def delete_old_posts_and_messages():
 
             # 4. Удаляем старые файлы, не привязанные к постам (старше 92 часов)
             #    (аватары не удаляются)
-            delete_old_files(92)
+            delete_old_files(512)
 
             conn.commit()
             conn.close()
