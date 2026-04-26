@@ -1,19 +1,3 @@
-// Определяем escapeHtml сразу
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
-// Также убедимся, что getAvatarUrl глобально доступна
-if (typeof getAvatarUrl === 'undefined') {
-    window.getAvatarUrl = function(avatarUrl) {
-        if (!avatarUrl) return '/default-avatar.png';
-        if (avatarUrl.startsWith('/uploads/avatars/')) return '/default-avatar.png';
-        return avatarUrl;
-    };
-}
-const getAvatarUrl = window.getAvatarUrl;
-
 class MessageManager {
     constructor() {
         this.currentConversation = null;
