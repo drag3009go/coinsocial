@@ -138,7 +138,7 @@ class App {
                                placeholder="Напишите комментарий..." value="${this.escapeHtml(draft)}">
                         <button class="btn btn-primary btn-small" onclick="app.addComment('${post.id}')">Отправить</button>
                     </div>
-                    <div class="comments-list" id="comments-list-${post.id}" style="display: block;"></div>
+                   <div class="comments-list" id="comments-list-${post.id}" style="display: none;"></div>
                 </div>
             </div>
         `;
