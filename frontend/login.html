@@ -1,10 +1,32 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Монеточка - Вход</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .password-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .password-wrapper .form-input {
+            flex: 1;
+            padding-right: 40px;
+        }
+        .toggle-password {
+            position: absolute;
+            right: 12px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 1.2rem;
+            background: none;
+            border: none;
+            padding: 0;
+            line-height: 1;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -30,7 +52,10 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Пароль</label>
-                    <input type="password" id="password" class="form-input" required placeholder="Ваш пароль">
+                    <div class="password-wrapper">
+                        <input type="password" id="password" class="form-input" required placeholder="Ваш пароль">
+                        <button type="button" class="toggle-password" aria-label="Показать/скрыть пароль">👁️</button>
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-primary">Войти</button>
             </form>
@@ -44,26 +69,40 @@
 
     <script src="js/auth.js"></script>
     <script>
+        // Переключение видимости пароля
+        document.querySelectorAll('.toggle-password').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const input = this.closest('.password-wrapper')?.querySelector('.form-input') || this.previousElementSibling;
+                if (input && input.type === 'password') {
+                    input.type = 'text';
+                    this.textContent = '🙈';
+                } else if (input) {
+                    input.type = 'password';
+                    this.textContent = '👁️';
+                }
+            });
+        });
+
         // Перенаправление если уже авторизован
         if (authManager.isAuthenticated()) {
-        window.location.href = 'feed.html';
+            window.location.href = 'feed.html';
         }
 
         document.getElementById('loginForm').addEventListener('submit', async function (e) {
-        e.preventDefault();
-        const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
-        const messageDiv = document.getElementById('message');
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const messageDiv = document.getElementById('message');
 
-        const result = await authManager.login(email, password);
-        if (result.success) {
-        messageDiv.innerHTML = '<div style="color: green; text-align: center;">Вход успешен! Перенаправление...</div>';
-        setTimeout(() => {
-        window.location.href = 'feed.html';
-        }, 1500);
-        } else {
-        messageDiv.innerHTML = `<div style="color: red; text-align: center;">Ошибка: ${result.error}</div>`;
-        }
+            const result = await authManager.login(email, password);
+            if (result.success) {
+                messageDiv.innerHTML = '<div style="color: green; text-align: center;">Вход успешен! Перенаправление...</div>';
+                setTimeout(() => {
+                    window.location.href = 'feed.html';
+                }, 1500);
+            } else {
+                messageDiv.innerHTML = `<div style="color: red; text-align: center;">Ошибка: ${result.error}</div>`;
+            }
         });
     </script>
 </body>
