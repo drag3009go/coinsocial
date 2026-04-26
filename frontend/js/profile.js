@@ -29,17 +29,17 @@ class ProfileManager {
     renderProfile() {
         if (!this.currentUser) return;
 
-        const avatar = document.getElementById('profileAvatar');
+         const avatar = document.getElementById('profileAvatar');
+
         const username = document.getElementById('profileUsername');
         const email = document.getElementById('profileEmail');
         const coins = document.getElementById('profileCoins');
         const joinDate = document.getElementById('profileJoinDate');
 
-        if (avatar) {
-            avatar.src = this.currentUser.avatar_url ?
-                API_BASE + this.currentUser.avatar_url : '/assets/default-avatar.png';
-            avatar.alt = this.currentUser.username;
-        }
+    if (avatar) {
+        avatar.src = getAvatarUrl(this.currentUser.avatar_url);
+        avatar.alt = this.currentUser.username;
+    }
 
         if (username) username.textContent = this.currentUser.username;
         if (email) email.textContent = this.currentUser.email;
@@ -80,12 +80,12 @@ class ProfileManager {
         if (!file) return;
 
         if (!file.type.startsWith('image/')) {
-            this.showError('Пожалуйста, выберите изображение');
+            this.showError('ГЏГ®Г¦Г Г«ГіГ©Г±ГІГ , ГўГ»ГЎГҐГ°ГЁГІГҐ ГЁГ§Г®ГЎГ°Г Г¦ГҐГ­ГЁГҐ');
             return;
         }
 
         if (file.size > 5 * 1024 * 1024) {
-            this.showError('Размер файла не должен превышать 5MB');
+            this.showError('ГђГ Г§Г¬ГҐГ° ГґГ Г©Г«Г  Г­ГҐ Г¤Г®Г«Г¦ГҐГ­ ГЇГ°ГҐГўГ»ГёГ ГІГј 5MB');
             return;
         }
 
@@ -111,7 +111,7 @@ class ProfileManager {
                 localStorage.setItem('currentUser', JSON.stringify(authManager.getCurrentUser()));
                 authManager.updateUI();
 
-                this.showSuccess('Аватар успешно обновлен!');
+                this.showSuccess('ГЂГўГ ГІГ Г° ГіГ±ГЇГҐГёГ­Г® Г®ГЎГ­Г®ГўГ«ГҐГ­!');
             } else {
                 throw new Error('Failed to upload avatar');
             }
@@ -128,12 +128,12 @@ class ProfileManager {
         const email = document.getElementById('editEmail').value.trim();
 
         if (!username) {
-            this.showError('Имя пользователя обязательно');
+            this.showError('Г€Г¬Гї ГЇГ®Г«ГјГ§Г®ГўГ ГІГҐГ«Гї Г®ГЎГїГ§Г ГІГҐГ«ГјГ­Г®');
             return;
         }
 
         if (!email) {
-            this.showError('Email обязателен');
+            this.showError('Email Г®ГЎГїГ§Г ГІГҐГ«ГҐГ­');
             return;
         }
 
@@ -146,7 +146,7 @@ class ProfileManager {
         }
 
         if (Object.keys(updateData).length === 0) {
-            this.showError('Нет изменений для сохранения');
+            this.showError('ГЌГҐГІ ГЁГ§Г¬ГҐГ­ГҐГ­ГЁГ© Г¤Г«Гї Г±Г®ГµГ°Г Г­ГҐГ­ГЁГї');
             return;
         }
 
@@ -166,7 +166,7 @@ class ProfileManager {
                 localStorage.setItem('currentUser', JSON.stringify(updatedUser));
                 authManager.updateUI();
 
-                this.showSuccess('Профиль успешно обновлен!');
+                this.showSuccess('ГЏГ°Г®ГґГЁГ«Гј ГіГ±ГЇГҐГёГ­Г® Г®ГЎГ­Г®ГўГ«ГҐГ­!');
             } else {
                 const error = await response.json();
                 throw new Error(error.detail || 'Failed to update profile');
