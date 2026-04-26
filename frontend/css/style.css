@@ -176,6 +176,12 @@ body::before {
 }
 
 /* ===== Форма поста ===== */
+
+.post {
+    background-color: rgba(255, 255, 255, 0.9); /* 90% непрозрачности, 10% прозрачности */
+    backdrop-filter: blur(2px); /* лёгкое размытие для читаемости текста */
+}
+    
 .post-form {
     padding: 20px;
 }
