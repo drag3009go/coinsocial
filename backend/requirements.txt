@@ -10,3 +10,4 @@ psycopg2-binary==2.9.9
 supabase==2.5.1
 Pillow==10.3.0
 python-magic==0.4.27
+pywebpush==1.14.1
