@@ -1,12 +1,22 @@
-const API_BASE = 'https://coinsocial.onrender.com';
+const API_BASE = 'https://coinsocial.onrender.com'; // замените на ваш домен
 
-// Функция для исправления URL аватара
+// Глобальные вспомогательные функции
 function getAvatarUrl(avatarUrl) {
     if (!avatarUrl) return '/default-avatar.png';
     if (avatarUrl.startsWith('/uploads/avatars/')) return '/default-avatar.png';
     return avatarUrl;
 }
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// Делаем их доступными глобально
 window.getAvatarUrl = getAvatarUrl;
+window.escapeHtml = escapeHtml;
 
 class AuthManager {
     constructor() {
@@ -44,6 +54,12 @@ class AuthManager {
                 localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
                 console.log('User data loaded:', this.currentUser);
                 return true;
+            } else if (response.status === 401) {
+                this.clearStorage();
+                if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
+                    window.location.href = 'login.html';
+                }
+                return false;
             }
             return false;
         } catch (error) {
@@ -95,10 +111,6 @@ class AuthManager {
             return { success: false, error: 'Network error: ' + error.message };
         }
     }
-
-
-    
-    
 
     logout() {
         this.token = null;
@@ -179,7 +191,7 @@ class AuthManager {
                 popup.innerHTML = users.map(u => `
                     <div class="online-user" onclick="messageManager.startNewConversation('${u.id}')">
                         <img src="${getAvatarUrl(u.avatar_url)}">
-                        <span>${u.username}</span>
+                        <span>${escapeHtml(u.username)}</span>
                     </div>
                 `).join('');
             }
@@ -197,17 +209,10 @@ class AuthManager {
             });
         }
     }
-
-    function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
-window.escapeHtml = escapeHtml;
-    
 }
 
 const authManager = new AuthManager();
-document.addEventListener('DOMContentLoaded', async () => { await authManager.init(); });
 
-
+document.addEventListener('DOMContentLoaded', async () => {
+    await authManager.init();
+});
