@@ -466,3 +466,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         await registerServiceWorker();
     }
 });
+
+setTimeout(() => {
+    if (typeof authManager !== 'undefined' && authManager.isAuthenticated()) {
+        registerServiceWorker();
+    }
+}, 1000);
