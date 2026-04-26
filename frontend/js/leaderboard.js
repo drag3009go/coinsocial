@@ -14,28 +14,25 @@ class Leaderboard {
     }
 
     render(users) {
-        const container = document.getElementById('leaderboard');
-        container.innerHTML = `
-            <table class="leaderboard-table">
-                <thead>
-                    <tr><th>#</th><th>Пользователь</th><th>Монеты</th><th>Титул</th></tr>
-                </thead>
-                <tbody>
-                    ${users.map((user, index) => `
-                        <tr>
-                            <td>${index+1}</td>
-                            <td>
-                                <img src="${user.avatar_url ? API_BASE+user.avatar_url : 'default-avatar.png'}" class="avatar-small">
-                                ${user.username}
-                            </td>
-                            <td>${user.coins}</td>
-                            <td>${user.title}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        `;
-    }
+    const container = document.getElementById('leaderboard');
+    container.innerHTML = `
+        <table class="leaderboard-table">
+            <thead><tr><th>#</th><th>Пользователь</th><th>Монеты</th><th>Титул</th></tr></thead>
+            <tbody>
+                ${users.map((user, index) => `
+                    <tr>
+                        <td>${index+1}</td>
+                        <td>
+                            <img src="${getAvatarUrl(user.avatar_url)}" class="avatar-small">
+                            ${user.username}
+                        </td>
+                        <td>${user.coins}</td>
+                        <td>${user.title}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
 }
 
 const leaderboard = new Leaderboard();
