@@ -7,8 +7,8 @@ class App {
         this.limit = 20;
         this.hasMore = true;
         this.updateInterval = null;
-        this.openCommentsState = new Map();   // postId -> bool
-        this.commentTimers = new Map();       // postId -> timer
+        this.openCommentsState = new Map();
+        this.commentTimers = new Map();
     }
 
     async init() {
@@ -36,10 +36,10 @@ class App {
         if (this.updateInterval) clearInterval(this.updateInterval);
         this.updateInterval = setInterval(async () => {
             if (window.location.pathname.includes('feed.html')) {
-                await this.refreshFeed();           // обновляем ленту (лайки, новые посты)
-                await this.refreshOpenComments();   // обновляем открытые комментарии
+                await this.refreshFeed();
+                await this.refreshOpenComments();
             }
-        }, 60000); // 60 секунд
+        }, 10000); // 10 секунд
     }
 
     async refreshFeed() {
@@ -50,13 +50,16 @@ class App {
                 for (const newPost of newPosts) {
                     const existingPostDiv = document.querySelector(`.post[data-post-id="${newPost.id}"]`);
                     if (existingPostDiv) {
-                        // обновляем счётчики существующего поста
                         const statsDiv = existingPostDiv.querySelector('.post-stats');
                         if (statsDiv) {
                             statsDiv.innerHTML = `<span>${newPost.likes} 👍</span><span>${newPost.dislikes} 👎</span><span>${newPost.comments_count} 💬</span>`;
                         }
+                        // обновляем также текст поста, если он изменился (не обязательно)
+                        const contentDiv = existingPostDiv.querySelector('.post-content');
+                        if (contentDiv && contentDiv.innerText !== newPost.content) {
+                            contentDiv.innerText = newPost.content;
+                        }
                     } else {
-                        // новый пост – вставляем в начало
                         const postElement = this.createPostElement(newPost);
                         const feed = document.getElementById('feed');
                         feed.insertAdjacentHTML('afterbegin', postElement);
@@ -76,7 +79,7 @@ class App {
         for (let [postId, isOpen] of this.openCommentsState.entries()) {
             if (isOpen) {
                 const commentsList = document.getElementById(`comments-list-${postId}`);
-                if (commentsList) {
+                if (commentsList && commentsList.style.display === 'block') {
                     await this.loadComments(postId, commentsList);
                 }
             }
@@ -269,7 +272,7 @@ class App {
         }
     }
 
-    // ---------- Комментарии (плоские, с удалением) ----------
+    // ---------- Комментарии ----------
     saveCommentDraft(postId, text) {
         localStorage.setItem(`comment_draft_${postId}`, text);
     }
@@ -325,8 +328,9 @@ class App {
             btn.removeEventListener('click', this._deleteHandler);
             this._deleteHandler = async (e) => {
                 const commentId = btn.getAttribute('data-comment-id');
+                const postIdAttr = btn.getAttribute('data-post-id');
                 if (confirm('Удалить комментарий?')) {
-                    await this.deleteComment(postId, commentId);
+                    await this.deleteComment(postIdAttr, commentId);
                 }
             };
             btn.addEventListener('click', this._deleteHandler);
@@ -353,11 +357,12 @@ class App {
                     }
                 }
             } else {
-                throw new Error('Failed to delete comment');
+                const err = await response.json();
+                throw new Error(err.detail || 'Failed to delete comment');
             }
         } catch (error) {
-            console.error(error);
-            this.showError('Не удалось удалить комментарий');
+            console.error('Delete comment error:', error);
+            this.showError('Не удалось удалить комментарий: ' + error.message);
         }
     }
 
@@ -400,7 +405,7 @@ class App {
         }
     }
 
-    // ---------- Реакции на посты ----------
+    // ---------- Реакции ----------
     async handleLike(postId) {
         const user = authManager.getCurrentUser();
         if (!user || !user.id) return alert('Ошибка: пользователь не найден');
@@ -459,7 +464,7 @@ class App {
         statsDiv.innerHTML = `<span>${likes} 👍</span><span>${dislikes} 👎</span><span>${statsDiv.children[2]?.innerText || '0 💬'}</span>`;
     }
 
-    // ---------- Создание, редактирование, удаление постов ----------
+    // ---------- Посты ----------
     async createPost(event) {
         event.preventDefault();
         const contentInput = document.getElementById('postContent');
@@ -482,7 +487,6 @@ class App {
                 document.getElementById('mediaPreview').innerHTML = '';
                 document.getElementById('mediaPreview').style.display = 'none';
                 if (result.new_balance !== undefined) authManager.updateUserCoins(result.new_balance);
-                // добавляем новый пост в начало
                 const newPostResponse = await fetch(`${API_BASE}/feed?limit=1&offset=0`);
                 if (newPostResponse.ok) {
                     const lastPost = (await newPostResponse.json())[0];
@@ -550,7 +554,7 @@ class App {
         }
     }
 
-    // ---------- Загрузка медиа ----------
+    // ---------- Медиа ----------
     async handleMediaUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -584,7 +588,7 @@ class App {
         }
     }
 
-    // ---------- Просмотр аватара ----------
+    // ---------- Аватар ----------
     setupAvatarModal() {
         const modalHtml = `
             <div id="avatarModal" class="modal" style="display: none;">
