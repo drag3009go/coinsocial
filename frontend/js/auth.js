@@ -29,18 +29,23 @@ class AuthManager {
     constructor() {
         this.currentUser = null;
         this.token = localStorage.getItem('token');
-        console.log('AuthManager initialized, token exists:', !!this.token);
+        this.initialized = false;
+        console.log('AuthManager constructor, token exists:', !!this.token);
     }
 
     async init() {
+        if (this.initialized) {
+            console.log('AuthManager already initialized');
+            return;
+        }
         console.log('AuthManager init started');
+        this.initialized = true;
         if (this.token) {
             const isValid = await this.checkTokenValidity();
             if (isValid) {
                 console.log('Token is valid, user is authenticated');
                 this.updateUI();
                 this.setupOnlineButton();
-                // Показываем приветствие с количеством непрочитанных сообщений
                 await this.showWelcomeWithUnreadCount();
                 return true;
             } else {
@@ -224,7 +229,6 @@ class AuthManager {
         }
     }
 
-    // Приветствие с непрочитанными сообщениями
     async showWelcomeWithUnreadCount() {
         if (sessionStorage.getItem('welcomeShown')) return;
         try {
@@ -252,9 +256,10 @@ if (!window.authManager) {
     window.authManager = new AuthManager();
 }
 const authManager = window.authManager;
-let authInitialized = false;
 
-document.addEventListener('DOMContentLoaded', async function () {
+// Автоматическая инициализация после загрузки DOM (только один раз)
+let authInitialized = false;
+document.addEventListener('DOMContentLoaded', async () => {
     if (!authInitialized) {
         authInitialized = true;
         await authManager.init();
