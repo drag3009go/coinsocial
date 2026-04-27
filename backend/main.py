@@ -473,6 +473,47 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     conversations.sort(key=lambda x: x["timestamp"], reverse=True)
     return conversations
 
+
+# Удаление сообщения
+@app.delete("/messages/{message_id}")
+async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT sender_id FROM messages WHERE id = %s", (message_id,))
+    msg = cursor.fetchone()
+    if not msg:
+        conn.close()
+        raise HTTPException(404, "Message not found")
+    if msg["sender_id"] != current_user["id"]:
+        conn.close()
+        raise HTTPException(403, "Not authorized")
+    cursor.execute("DELETE FROM messages WHERE id = %s", (message_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Message deleted"}
+
+# Редактирование сообщения
+@app.put("/messages/{message_id}")
+async def edit_message(message_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    content = data.get("content")
+    if not content:
+        raise HTTPException(400, "Content required")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT sender_id FROM messages WHERE id = %s", (message_id,))
+    msg = cursor.fetchone()
+    if not msg:
+        conn.close()
+        raise HTTPException(404, "Message not found")
+    if msg["sender_id"] != current_user["id"]:
+        conn.close()
+        raise HTTPException(403, "Not authorized")
+    cursor.execute("UPDATE messages SET content = %s, timestamp = %s WHERE id = %s", (content, datetime.now().isoformat(), message_id))
+    conn.commit()
+    conn.close()
+    return {"message": "Message updated"}
+    
+
 @app.get("/messages/{user_id}")
 async def get_messages(user_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
