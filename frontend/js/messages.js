@@ -2,7 +2,7 @@
 
 class MessageManager {
     constructor() {
-        this.initialized = true;
+        this.initialized = false;
         this.currentConversation = null;
         this.conversations = [];
         this.messages = [];
