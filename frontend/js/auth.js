@@ -1,6 +1,5 @@
 const API_BASE = 'https://coinsocial.onrender.com';
 
-// Глобальные функции
 function getAvatarUrl(avatarUrl) {
     if (!avatarUrl) return '/default-avatar.png';
     if (avatarUrl.startsWith('/uploads/avatars/')) return '/default-avatar.png';
@@ -30,43 +29,32 @@ class AuthManager {
         this.currentUser = null;
         this.token = localStorage.getItem('token');
         this.initialized = false;
-        console.log('AuthManager constructor, token exists:', !!this.token);
     }
 
     async init() {
-        if (this.initialized) {
-            console.log('AuthManager already initialized');
-            return;
-        }
-        console.log('AuthManager init started');
+        if (this.initialized) return;
         this.initialized = true;
         if (this.token) {
             const isValid = await this.checkTokenValidity();
             if (isValid) {
-                console.log('Token is valid, user is authenticated');
                 this.updateUI();
                 this.setupOnlineButton();
                 await this.showWelcomeWithUnreadCount();
                 return true;
             } else {
-                console.log('Token is invalid, clearing storage');
                 this.clearStorage();
             }
         }
-        console.log('No valid token, user is not authenticated');
         this.redirectIfNeeded();
         return false;
     }
 
     async checkTokenValidity() {
         try {
-            const response = await fetch(`${API_BASE}/profile`, {
-                headers: this.getAuthHeaders()
-            });
+            const response = await fetch(`${API_BASE}/profile`, { headers: this.getAuthHeaders() });
             if (response.ok) {
                 this.currentUser = await response.json();
                 localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-                console.log('User data loaded:', this.currentUser);
                 return true;
             } else if (response.status === 401) {
                 this.clearStorage();
@@ -189,9 +177,7 @@ class AuthManager {
 
     async fetchOnlineUsers() {
         try {
-            const response = await fetch(`${API_BASE}/online-users`, {
-                headers: this.getAuthHeaders()
-            });
+            const response = await fetch(`${API_BASE}/online-users`, { headers: this.getAuthHeaders() });
             if (response.ok) return await response.json();
         } catch (error) { console.error(error); }
         return [];
@@ -232,9 +218,7 @@ class AuthManager {
     async showWelcomeWithUnreadCount() {
         if (sessionStorage.getItem('welcomeShown')) return;
         try {
-            const response = await fetch(`${API_BASE}/messages/conversations`, {
-                headers: this.getAuthHeaders()
-            });
+            const response = await fetch(`${API_BASE}/messages/conversations`, { headers: this.getAuthHeaders() });
             if (response.ok) {
                 const conversations = await response.json();
                 const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
@@ -251,17 +235,18 @@ class AuthManager {
     }
 }
 
-// Синглтон
+// Единый глобальный экземпляр
 if (!window.authManager) {
     window.authManager = new AuthManager();
 }
 const authManager = window.authManager;
-
-// Автоматическая инициализация после загрузки DOM (только один раз)
 let authInitialized = false;
+
 document.addEventListener('DOMContentLoaded', async () => {
     if (!authInitialized) {
         authInitialized = true;
         await authManager.init();
+        // После инициализации диспатчим событие, чтобы другие скрипты могли подписаться
+        window.dispatchEvent(new CustomEvent('authReady', { detail: { authenticated: authManager.isAuthenticated() } }));
     }
 });
