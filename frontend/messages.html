@@ -2,25 +2,13 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Монеточка - Сообщения</title>
     <link rel="stylesheet" href="css/style.css">
-    <script>
-    window.VAPID_PUBLIC_KEY = 'BEN-beSTpDitLHtI3X4Ynq0en3RB502IaIElB3uWH3ey63rrpjz2q26xPNAjMNO3jGw6Si3yddsfisDeAq1lOyg';
-</script>
 </head>
 <body>
-
-    <!-- Модальное окно для увеличения аватара -->
-<div id="avatarModal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <span class="close-modal" id="closeAvatarModal">&times;</span>
-        <img id="fullAvatar" src="" alt="Аватар">
-    </div>
-</div>
-
-    
     <div class="container">
+        <!-- Шапка -->
         <div class="header">
             <div class="logo">
                 <a href="index.html" style="text-decoration: none; color: inherit;">
@@ -28,11 +16,11 @@
                 </a>
             </div>
             <div class="nav">
-                <a href="feed.html" class="nav-button">📱</a>
-                <a href="messages.html" class="nav-button active">💬</a>
-                <a href="profile.html" class="nav-button">👤</a>
-                <a href="leaderboard.html" class="nav-button">🏆</a>
-                <button class="nav-button" onclick="authManager.logout()">🚪</button>
+                <a href="feed.html" class="nav-button">📱 </a>
+                <a href="messages.html" class="nav-button active">💬 </a>
+                <a href="profile.html" class="nav-button">👤 </a>
+                <a href="leaderboard.html" class="nav-button">🏆 </a>
+                <button class="nav-button" onclick="authManager.logout()">🚪 </button>
             </div>
             <div class="coin-counter">
                 🪙 <span id="coinCount">0</span>
@@ -43,17 +31,21 @@
             </div>
         </div>
 
+        <!-- Основной контейнер сообщений -->
         <div class="messages-container">
+            <!-- Боковая панель с диалогами и поиском -->
             <div class="conversations-sidebar">
                 <div class="conversations-header">
                     <h3>💬 Сообщения</h3>
-                    <input type="text" id="userSearch" class="form-input" placeholder="Поиск пользователей..." style="margin-top: 10px; padding: 8px; font-size: 14px;">
+                    <input type="text" id="userSearch" class="form-input" placeholder="Поиск пользователей..."
+                           style="margin-top: 10px; padding: 8px; font-size: 14px;">
                     <button id="toggleUsersBtn" class="btn btn-secondary btn-small" style="margin-top: 5px;">👥 Все пользователи</button>
                 </div>
                 <div id="searchResults"></div>
                 <div class="conversations-list" id="conversationsList"></div>
             </div>
 
+            <!-- Область чата -->
             <div class="chat-area">
                 <div class="chat-header" id="chatHeader">
                     <div>Выберите диалог</div>
@@ -71,16 +63,35 @@
         </div>
     </div>
 
+    <!-- Модальное окно для аватара (добавляется глобально) -->
+    <div id="avatarModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal" id="closeAvatarModal">&times;</span>
+            <img id="fullAvatar" src="" alt="Аватар">
+        </div>
+    </div>
+
     <script src="js/auth.js"></script>
     <script src="js/messages.js"></script>
+    <!-- Вспомогательный скрипт для управления полем ввода (может быть убран, но оставляем для надёжности) -->
     <script>
-        // Дополнительная проверка
-        console.log("messages.html loaded, messageManager type:", typeof messageManager);
-        if (typeof messageManager === 'undefined') {
-            console.error("CRITICAL: messageManager is undefined! Check messages.js loading.");
-        } else {
-            console.log("messageManager is ready.");
-        }
+        (function() {
+            // Небольшой fallback для включения поля ввода – основная логика в messages.js
+            function updateInputState() {
+                const messageInput = document.getElementById('messageInput');
+                const sendButton = document.getElementById('sendMsgBtn');
+                if (messageManager && messageManager.currentConversation) {
+                    messageInput.disabled = false;
+                    sendButton.disabled = false;
+                    messageInput.placeholder = "Введите сообщение...";
+                } else {
+                    messageInput.disabled = true;
+                    sendButton.disabled = true;
+                    messageInput.placeholder = "Выберите диалог для общения";
+                }
+            }
+            setInterval(updateInputState, 500);
+        })();
     </script>
 </body>
 </html>
