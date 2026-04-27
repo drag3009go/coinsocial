@@ -4,11 +4,11 @@ class App {
         this.posts = [];
         this.isLoading = false;
         this.offset = 0;
-        this.limit = 15;
+        this.limit = 20;
         this.hasMore = true;
         this.updateInterval = null;
-        this.openCommentsState = new Map();
-        this.commentTimers = new Map();
+        this.openCommentsState = new Map();   // postId -> bool
+        this.commentTimers = new Map();       // postId -> timer
     }
 
     async init() {
@@ -39,7 +39,7 @@ class App {
                 await this.refreshFeed();
                 await this.refreshOpenComments();
             }
-        }, 5000); // 10 секунд
+        }, 30000);
     }
 
     async refreshFeed() {
@@ -53,11 +53,6 @@ class App {
                         const statsDiv = existingPostDiv.querySelector('.post-stats');
                         if (statsDiv) {
                             statsDiv.innerHTML = `<span>${newPost.likes} 👍</span><span>${newPost.dislikes} 👎</span><span>${newPost.comments_count} 💬</span>`;
-                        }
-                        // обновляем также текст поста, если он изменился (не обязательно)
-                        const contentDiv = existingPostDiv.querySelector('.post-content');
-                        if (contentDiv && contentDiv.innerText !== newPost.content) {
-                            contentDiv.innerText = newPost.content;
                         }
                     } else {
                         const postElement = this.createPostElement(newPost);
@@ -79,7 +74,7 @@ class App {
         for (let [postId, isOpen] of this.openCommentsState.entries()) {
             if (isOpen) {
                 const commentsList = document.getElementById(`comments-list-${postId}`);
-                if (commentsList && commentsList.style.display === 'block') {
+                if (commentsList) {
                     await this.loadComments(postId, commentsList);
                 }
             }
@@ -228,7 +223,7 @@ class App {
                         <img src="${this.getAvatarUrl(post.avatar_url)}" alt="${post.username}" class="avatar">
                         <div>
                             <div class="username">${this.escapeHtml(post.username)}</div>
-                            <div class="timestamp">${this.formatDate(post.timestamp)}</div>
+                            <div class="timestamp">${this.formatDateYakutsk(post.timestamp)}</div>
                         </div>
                     </div>
                     ${menuHtml}
@@ -314,7 +309,7 @@ class App {
                             <img src="${this.getAvatarUrl(comment.avatar_url)}" class="avatar-small">
                             <span>${this.escapeHtml(comment.username)}</span>
                         </div>
-                        <div class="timestamp">${this.formatDate(comment.timestamp)}</div>
+                        <div class="timestamp">${this.formatDateYakutsk(comment.timestamp)}</div>
                         ${deleteBtn}
                     </div>
                     <div class="comment-content">${this.escapeHtml(comment.content)}</div>
@@ -328,9 +323,8 @@ class App {
             btn.removeEventListener('click', this._deleteHandler);
             this._deleteHandler = async (e) => {
                 const commentId = btn.getAttribute('data-comment-id');
-                const postIdAttr = btn.getAttribute('data-post-id');
                 if (confirm('Удалить комментарий?')) {
-                    await this.deleteComment(postIdAttr, commentId);
+                    await this.deleteComment(postId, commentId);
                 }
             };
             btn.addEventListener('click', this._deleteHandler);
@@ -347,7 +341,6 @@ class App {
                 this.showSuccess('Комментарий удалён');
                 const commentsList = document.getElementById(`comments-list-${postId}`);
                 if (commentsList) await this.loadComments(postId, commentsList);
-                // обновляем счётчик комментариев у поста
                 const postDiv = document.querySelector(`.post[data-post-id="${postId}"]`);
                 if (postDiv) {
                     const statsSpan = postDiv.querySelector('.post-stats span:last-child');
@@ -357,12 +350,11 @@ class App {
                     }
                 }
             } else {
-                const err = await response.json();
-                throw new Error(err.detail || 'Failed to delete comment');
+                throw new Error('Failed to delete comment');
             }
         } catch (error) {
-            console.error('Delete comment error:', error);
-            this.showError('Не удалось удалить комментарий: ' + error.message);
+            console.error(error);
+            this.showError('Не удалось удалить комментарий');
         }
     }
 
@@ -405,7 +397,7 @@ class App {
         }
     }
 
-    // ---------- Реакции ----------
+    // ---------- Реакции на посты ----------
     async handleLike(postId) {
         const user = authManager.getCurrentUser();
         if (!user || !user.id) return alert('Ошибка: пользователь не найден');
@@ -464,7 +456,7 @@ class App {
         statsDiv.innerHTML = `<span>${likes} 👍</span><span>${dislikes} 👎</span><span>${statsDiv.children[2]?.innerText || '0 💬'}</span>`;
     }
 
-    // ---------- Посты ----------
+    // ---------- Создание, редактирование, удаление постов ----------
     async createPost(event) {
         event.preventDefault();
         const contentInput = document.getElementById('postContent');
@@ -554,7 +546,7 @@ class App {
         }
     }
 
-    // ---------- Медиа ----------
+    // ---------- Загрузка медиа ----------
     async handleMediaUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -588,7 +580,7 @@ class App {
         }
     }
 
-    // ---------- Аватар ----------
+    // ---------- Просмотр аватара ----------
     setupAvatarModal() {
         const modalHtml = `
             <div id="avatarModal" class="modal" style="display: none;">
@@ -621,25 +613,22 @@ class App {
         if (modal) modal.style.display = 'flex';
     }
 
-    // ---------- Вспомогательные ----------
-    formatTime(timestamp) {
-    if (!timestamp) return '';
-    const utcDate = new Date(timestamp);
-    // Якутск UTC+9
-    const yakutskDate = new Date(utcDate.getTime() + 9 * 60 * 60 * 1000);
-    const nowYakutsk = new Date(Date.now() + 9 * 60 * 60 * 1000);
-    const diffMs = nowYakutsk - yakutskDate;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return 'только что';
-    if (diffMins < 60) return `${diffMins} мин назад`;
-    if (diffHours < 24) return `${diffHours} ч назад`;
-    if (diffDays < 7) return `${diffDays} дн назад`;
-    return yakutskDate.toLocaleDateString('ru-RU');
+    // ---------- Форматирование даты по Якутску (UTC+9) ----------
+    formatDateYakutsk(timestamp) {
+        if (!timestamp) return '';
+        const utcDate = new Date(timestamp);
+        const yakutskDate = new Date(utcDate.getTime() + 9 * 60 * 60 * 1000);
+        const nowYakutsk = new Date(Date.now() + 9 * 60 * 60 * 1000);
+        const diffMs = nowYakutsk - yakutskDate;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffMins < 1) return 'только что';
+        if (diffMins < 60) return `${diffMins} мин назад`;
+        if (diffHours < 24) return `${diffHours} ч назад`;
+        if (diffDays < 7) return `${diffDays} дн назад`;
+        return yakutskDate.toLocaleDateString('ru-RU');
     }
-    
 
     escapeHtml(text) {
         const div = document.createElement('div');
@@ -708,7 +697,6 @@ class App {
 }
 
 const app = new App();
-
 document.addEventListener('DOMContentLoaded', async () => {
     await app.init();
 });
