@@ -622,7 +622,7 @@ class App {
     }
 
     // ---------- Вспомогательные ----------
-    formatTimeYakutsk(timestamp) {
+    formatTime(timestamp) {
     if (!timestamp) return '';
     const utcDate = new Date(timestamp);
     // Якутск UTC+9
