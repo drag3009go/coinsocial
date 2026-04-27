@@ -1123,5 +1123,39 @@ body,
     cursor: pointer;
     margin-top: 4px;
 }
+
+
+    .message-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 5px;
+}
+.message-menu {
+    display: flex;
+    gap: 8px;
+}
+.message-menu button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px;
+    color: #666;
+}
+.message-menu button:hover {
+    color: #333;
+}
+.message.sent .message-menu button {
+    color: #ddd;
+}
+.message.sent .message-menu button:hover {
+    color: white;
+}
+.error-badge {
+    font-size: 10px;
+    color: #ef4444;
+    margin-top: 4px;
+}
     
 }
