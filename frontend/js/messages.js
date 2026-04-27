@@ -2,6 +2,7 @@
 
 class MessageManager {
     constructor() {
+        this.initialized = false;
         this.currentConversation = null;
         this.conversations = [];
         this.messages = [];
@@ -16,33 +17,28 @@ class MessageManager {
         this.initialized = false;
     }
 
-    async init() {
-        if (this.initialized) return;
-        console.log('MessageManager init - waiting for auth...');
-        const checkAuth = () => {
-            if (authManager.isAuthenticated() && authManager.getCurrentUser()) {
-                console.log('Auth ready, initializing message manager');
-                this._init();
-                clearInterval(interval);
-            } else if (authManager.initialized && !authManager.isAuthenticated()) {
-                console.warn('User not authenticated, stopping message manager init');
-                clearInterval(interval);
-            }
-        };
-        const interval = setInterval(checkAuth, 200);
-        // Проверим сразу, чтобы не ждать
-        checkAuth();
-    }
 
+    async init() {
+    if (this.initialized) return;
+    if (!authManager.isAuthenticated()) {
+        console.log('MessageManager: user not authenticated, waiting for authReady');
+        window.addEventListener('authReady', () => {
+            if (authManager.isAuthenticated()) this._init();
+        });
+        return;
+    }
+    this._init();
+    }
+    
     async _init() {
-        if (this.initialized) return;
-        this.initialized = true;
-        console.log('Loading conversations...');
-        await this.loadConversations();
-        this.setupEventListeners();
-        this.startAutoRefresh();
-        this.startNotificationChecker();
-        if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+    if (this.initialized) return;
+    this.initialized = true;
+    console.log('MessageManager: initializing...');
+    await this.loadConversations();
+    this.setupEventListeners();
+    this.startAutoRefresh();
+    this.startNotificationChecker();
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
     }
 
     setupEventListeners() {
