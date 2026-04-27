@@ -8,11 +8,11 @@ class Leaderboard {
                 const users = await response.json();
                 this.render(users);
             } else {
-                console.error('Leaderboard response error:', response.status);
-                this.showError('Не удалось загрузить таблицу лидеров');
+                console.error('Leaderboard error:', response.status);
+                this.showError(`Ошибка ${response.status}`);
             }
         } catch (error) {
-            console.error('Error loading leaderboard:', error);
+            console.error(error);
             this.showError('Ошибка сети');
         }
     }
@@ -21,22 +21,17 @@ class Leaderboard {
         const container = document.getElementById('leaderboard');
         if (!container) return;
         if (!users || users.length === 0) {
-            container.innerHTML = '<div class="loading">Нет данных для отображения</div>';
+            container.innerHTML = '<div class="loading">Нет данных</div>';
             return;
         }
         container.innerHTML = `
             <table class="leaderboard-table">
-                <thead>
-                    <tr><th>#</th><th>Пользователь</th><th>Монеты</th><th>Титул</th></tr>
-                </thead>
+                <thead><tr><th>#</th><th>Пользователь</th><th>Монеты</th><th>Титул</th></tr></thead>
                 <tbody>
-                    ${users.map((user, index) => `
+                    ${users.map((user, i) => `
                         <tr>
-                            <td>${index + 1}</td>
-                            <td>
-                                <img src="${getAvatarUrl(user.avatar_url)}" class="avatar-small">
-                                ${escapeHtml(user.username)}
-                            </td>
+                            <td>${i+1}</td>
+                            <td><img src="${getAvatarUrl(user.avatar_url)}" class="avatar-small"> ${escapeHtml(user.username)}</td>
                             <td>${user.coins}</td>
                             <td>${escapeHtml(user.title)}</td>
                         </tr>
@@ -46,9 +41,9 @@ class Leaderboard {
         `;
     }
 
-    showError(message) {
+    showError(msg) {
         const container = document.getElementById('leaderboard');
-        if (container) container.innerHTML = `<div class="error">${escapeHtml(message)}</div>`;
+        if (container) container.innerHTML = `<div class="error-message">${escapeHtml(msg)}</div>`;
     }
 }
 
