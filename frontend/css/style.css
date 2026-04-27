@@ -1083,6 +1083,45 @@ body,
     text-align: center;
     padding: 20px;
 }
-    
+
+    /* Меню сообщения (редактировать/удалить) */
+.message-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 4px;
+}
+.message-menu {
+    display: flex;
+    gap: 6px;
+}
+.message-menu button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px;
+    opacity: 0.6;
+}
+.message-menu button:hover {
+    opacity: 1;
+}
+.sending {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+.message.error {
+    background-color: #fee2e2;
+    border: 1px solid #ef4444;
+}
+.delete-temp-msg {
+    background: none;
+    border: none;
+    color: #ef4444;
+    font-size: 11px;
+    cursor: pointer;
+    margin-top: 4px;
+}
     
 }
