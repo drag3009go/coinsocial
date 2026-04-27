@@ -179,20 +179,25 @@ class MessageManager {
 
         container.innerHTML = this.messages.map(msg => {
             const isSent = msg.sender_id === currentUser.id;
-            const errorMark = msg.error ? `<button class="delete-temp-msg" data-temp-id="${msg.id}">✖ Удалить</button>` : '';
-            const sendingMark = msg.is_temp && !msg.error ? '<div class="sending">⏳ Отправка...</div>' : '';
+            const isTemp = msg.is_temp === true;
+            const hasError = msg.error === true;
+            // Кнопка удаления для любого временного сообщения (и для ошибочных)
+            const deleteBtn = isTemp ? `<button class="delete-temp-msg" data-temp-id="${msg.id}">✖ Удалить</button>` : '';
+            const sendingMark = isTemp && !hasError ? '<div class="sending">⏳ Отправка...</div>' : '';
+            const errorMark = hasError ? '<div class="error-mark">⚠️ Не отправлено</div>' : '';
             return `
-                <div class="message ${isSent ? 'sent' : 'received'} ${msg.error ? 'error' : ''}" data-temp-id="${msg.is_temp ? msg.id : ''}">
+                <div class="message ${isSent ? 'sent' : 'received'} ${hasError ? 'error' : ''}" data-temp-id="${isTemp ? msg.id : ''}">
                     <div class="message-content">${escapeHtml(msg.content)}</div>
                     <div class="message-time">${this.formatTimeYakutsk(msg.timestamp)}</div>
                     ${sendingMark}
                     ${errorMark}
+                    ${deleteBtn}
                 </div>
             `;
         }).join('');
         container.scrollTop = container.scrollHeight;
 
-        // Обработчики для удаления временных сообщений с ошибкой
+        // Обработчики удаления временных сообщений
         document.querySelectorAll('.delete-temp-msg').forEach(btn => {
             btn.removeEventListener('click', this._deleteTempHandler);
             this._deleteTempHandler = (e) => {
@@ -203,17 +208,15 @@ class MessageManager {
             btn.addEventListener('click', this._deleteTempHandler);
         });
     }
+    
 
-    async sendMessage() {
+
+   async sendMessage() {
         const input = document.getElementById('messageInput');
         const content = input.value.trim();
         if (!content || !this.currentConversation) return;
 
-        // Не блокируем кнопку, чтобы пользователь мог отправить ещё одно сообщение
-        // но блокируем на время отправки (коротко)
-        const sendBtn = document.getElementById('sendMsgBtn');
-        sendBtn.disabled = true;
-
+        // НЕ блокируем кнопку – можно отправлять хоть 10 сообщений подряд
         const tempId = 'temp_' + Date.now() + '_' + Math.random();
         const currentUser = authManager.getCurrentUser();
         const tempMsg = {
@@ -221,43 +224,41 @@ class MessageManager {
             sender_id: currentUser.id,
             content: content,
             timestamp: new Date().toISOString(),
-            is_temp: true
+            is_temp: true,
+            error: false
         };
         this.messages.push(tempMsg);
         this.renderMessages();
         input.value = '';
 
-        try {
-            const response = await fetch(`${API_BASE}/messages/send`, {
-                method: 'POST',
-                headers: authManager.getAuthHeaders(),
-                body: JSON.stringify({
-                    receiver_id: this.currentConversation,
-                    content: content
-                })
-            });
+        // Асинхронный запрос без ожидания (fire-and-forget)
+        fetch(`${API_BASE}/messages/send`, {
+            method: 'POST',
+            headers: authManager.getAuthHeaders(),
+            body: JSON.stringify({
+                receiver_id: this.currentConversation,
+                content: content
+            })
+        })
+        .then(async response => {
             if (response.ok) {
                 const data = await response.json();
-                // Удаляем временное сообщение, затем перезагружаем реальную переписку
+                // Удаляем временное сообщение и подгружаем свежие
                 this.messages = this.messages.filter(m => m.id !== tempId);
                 await this.loadMessages(this.currentConversation);
-                // После успеха кнопка разблокируется в finally
             } else {
-                throw new Error('Failed to send');
+                throw new Error('Ошибка сервера');
             }
-        } catch (error) {
-            console.error(error);
+        })
+        .catch(error => {
+            console.error('Send error:', error);
             const tempIndex = this.messages.findIndex(m => m.id === tempId);
             if (tempIndex !== -1) {
                 this.messages[tempIndex].error = true;
                 this.messages[tempIndex].is_temp = false; // убираем флаг отправки
                 this.renderMessages();
             }
-        } finally {
-            sendBtn.disabled = false;
-            // Фокус на поле ввода
-            document.getElementById('messageInput').focus();
-        }
+        });
     }
 
     async searchUsers(query) {
