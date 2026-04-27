@@ -16,8 +16,12 @@ class MessageManager {
     }
 
     async init() {
-        if (!authManager.isAuthenticated()) return;
-        await this._init();
+        const wait = setInterval(() => {
+            if (authManager.isAuthenticated()) {
+                clearInterval(wait);
+                this._init();
+            }
+        }, 100);
     }
 
     async _init() {
@@ -29,21 +33,17 @@ class MessageManager {
     }
 
     setupEventListeners() {
-        const msgInput = document.getElementById('messageInput');
-        if (msgInput) msgInput.addEventListener('keypress', e => e.key === 'Enter' && this.sendMessage());
-        const searchInput = document.getElementById('userSearch');
-        if (searchInput) searchInput.addEventListener('input', e => {
+        document.getElementById('messageInput')?.addEventListener('keypress', e => e.key === 'Enter' && this.sendMessage());
+        document.getElementById('userSearch')?.addEventListener('input', e => {
             if (!this.showAllUsers) this.searchUsers(e.target.value);
             else if (e.target.value.length >= 2) this.searchUsers(e.target.value);
             else this.loadAllUsers();
         });
-        const toggleBtn = document.getElementById('toggleUsersBtn');
-        if (toggleBtn) toggleBtn.addEventListener('click', () => {
+        document.getElementById('toggleUsersBtn')?.addEventListener('click', () => {
             this.showAllUsers = !this.showAllUsers;
             this.showAllUsers ? this.loadAllUsers() : (this.renderConversations(), document.getElementById('userSearch').value = '');
         });
-        const sendBtn = document.getElementById('sendMsgBtn');
-        if (sendBtn) sendBtn.addEventListener('click', () => this.sendMessage());
+        document.getElementById('sendMsgBtn')?.addEventListener('click', () => this.sendMessage());
     }
 
     async loadConversations() {
@@ -139,7 +139,11 @@ class MessageManager {
         if (!authManager.isAuthenticated()) return;
         try {
             const res = await fetch(`${API_BASE}/messages/${userId}`, { headers: authManager.getAuthHeaders() });
-            if (res.ok) { this.messages = await res.json(); this.renderMessages(); }
+            if (res.ok) {
+                this.messages = await res.json();
+                this.renderMessages();
+                this.scrollToBottom();
+            }
         } catch(e) { console.error(e); }
     }
 
@@ -148,43 +152,54 @@ class MessageManager {
         if (!container) return;
         const currentUser = authManager.getCurrentUser();
         if (!currentUser) return;
+
         container.innerHTML = this.messages.map(msg => {
             const isMy = msg.sender_id === currentUser.id;
-            const menu = (isMy && !msg.is_temp && !this.selectionMode) ? `
-                <div class="message-menu">
-                    <button class="msg-edit" data-id="${msg.id}" data-content="${escapeHtml(msg.content)}">✏️</button>
-                    <button class="msg-delete" data-id="${msg.id}">🗑️</button>
-                </div>
-            ` : '';
             const sending = msg.is_temp ? '<div class="sending">⏳ Отправка...</div>' : '';
             const error = msg.error ? '<div class="error-badge">⚠️ Ошибка</div>' : '';
             const check = this.selectionMode ? `<input type="checkbox" class="msg-checkbox" data-id="${msg.id}" ${this.selectedMessages.has(msg.id) ? 'checked' : ''}>` : '';
+            const menuBtn = (isMy && !msg.is_temp && !this.selectionMode) ? `<button class="message-menu-btn" data-id="${msg.id}" data-content="${escapeHtml(msg.content)}">⋮</button>` : '';
             return `
                 <div class="message ${isMy ? 'sent' : 'received'} ${msg.error ? 'error' : ''}" data-msg-id="${msg.id}">
-                    ${check ? `<div class="message-check">${check}</div>` : ''}
+                    <div class="message-check">${check}</div>
                     <div class="message-content">${escapeHtml(msg.content)}</div>
                     <div class="message-meta">
                         <span class="message-time">${this.formatTimeYakutsk(msg.timestamp)}</span>
-                        ${menu}
+                        ${menuBtn}
                     </div>
                     ${sending}
                     ${error}
                 </div>
             `;
         }).join('');
-        document.querySelectorAll('.msg-edit').forEach(btn => {
-            btn.onclick = (e) => { e.stopPropagation(); this.editMessage(btn.dataset.id, btn.dataset.content); };
+
+        document.querySelectorAll('.message-menu-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const msgId = btn.dataset.id;
+                const content = btn.dataset.content;
+                this.showMessageMenu(msgId, content);
+            };
         });
-        document.querySelectorAll('.msg-delete').forEach(btn => {
-            btn.onclick = (e) => { e.stopPropagation(); if(confirm('Удалить сообщение?')) this.deleteMessage(btn.dataset.id); };
-        });
+
         if (this.selectionMode) {
             document.querySelectorAll('.msg-checkbox').forEach(cb => {
                 cb.onchange = () => {
-                    if (cb.checked) this.selectedMessages.add(cb.dataset.id);
-                    else this.selectedMessages.delete(cb.dataset.id);
+                    const id = cb.dataset.id;
+                    if (cb.checked) this.selectedMessages.add(id);
+                    else this.selectedMessages.delete(id);
                 };
             });
+        }
+    }
+
+    showMessageMenu(msgId, currentContent) {
+        const action = prompt('Выберите действие:\n1 - Редактировать\n2 - Удалить', '1');
+        if (action === '1') {
+            const newContent = prompt('Введите новый текст:', currentContent);
+            if (newContent && newContent !== currentContent) this.editMessage(msgId, newContent);
+        } else if (action === '2') {
+            if (confirm('Удалить сообщение?')) this.deleteMessage(msgId);
         }
     }
 
@@ -213,8 +228,10 @@ class MessageManager {
         const toDelete = Array.from(this.selectedMessages);
         if (!toDelete.length) return;
         if (!confirm(`Удалить ${toDelete.length} сообщение(ий)?`)) return;
+
         const delBtn = document.getElementById('deleteSelectedBtn');
         if (delBtn) delBtn.disabled = true;
+
         for (const msgId of toDelete) {
             try {
                 const res = await fetch(`${API_BASE}/messages/${msgId}`, { method: 'DELETE', headers: authManager.getAuthHeaders() });
@@ -222,7 +239,7 @@ class MessageManager {
                     this.messages = this.messages.filter(m => m.id !== msgId);
                     this.selectedMessages.delete(msgId);
                     this.renderMessages();
-                } else console.error(`Не удалось удалить ${msgId}`);
+                }
             } catch(e) { console.error(e); }
             await new Promise(r => setTimeout(r, 200));
         }
@@ -235,9 +252,16 @@ class MessageManager {
         const input = document.getElementById('messageInput');
         const content = input.value.trim();
         if (!content || !this.currentConversation) return;
+
         const tempId = 'temp_' + Date.now() + '_' + Math.random();
         const currentUser = authManager.getCurrentUser();
-        this.messages.push({ id: tempId, sender_id: currentUser.id, content, timestamp: new Date().toISOString(), is_temp: true });
+        this.messages.push({
+            id: tempId,
+            sender_id: currentUser.id,
+            content,
+            timestamp: new Date().toISOString(),
+            is_temp: true
+        });
         this.renderMessages();
         this.scrollToBottom();
         input.value = '';
@@ -246,7 +270,8 @@ class MessageManager {
     }
 
     async processQueue() {
-        if (this.isSending || !this.sendQueue.length) return;
+        if (this.isSending) return;
+        if (!this.sendQueue.length) return;
         this.isSending = true;
         const { content, tempId, receiverId } = this.sendQueue.shift();
         try {
@@ -262,20 +287,22 @@ class MessageManager {
             } else throw new Error();
         } catch {
             const idx = this.messages.findIndex(m => m.id === tempId);
-            if (idx !== -1) { this.messages[idx].error = true; this.messages[idx].is_temp = false; this.renderMessages(); }
+            if (idx !== -1) {
+                this.messages[idx].error = true;
+                this.messages[idx].is_temp = false;
+                this.renderMessages();
+            }
         } finally {
             this.isSending = false;
             this.processQueue();
         }
     }
 
-    async editMessage(msgId, oldContent) {
-        const newContent = prompt('Редактировать сообщение:', oldContent);
-        if (!newContent || newContent === oldContent) return;
-        const original = this.messages.find(m => m.id === msgId);
-        if (!original) return;
-        const saved = original.content;
-        original.content = newContent;
+    async editMessage(msgId, newContent) {
+        const originalMsg = this.messages.find(m => m.id === msgId);
+        if (!originalMsg) return;
+        const savedContent = originalMsg.content;
+        originalMsg.content = newContent;
         this.renderMessages();
         try {
             const res = await fetch(`${API_BASE}/messages/${msgId}`, {
@@ -285,7 +312,7 @@ class MessageManager {
             });
             if (!res.ok) throw new Error();
         } catch {
-            original.content = saved;
+            originalMsg.content = savedContent;
             this.renderMessages();
             alert('Не удалось изменить сообщение');
         }
@@ -307,7 +334,10 @@ class MessageManager {
     }
 
     async searchUsers(query) {
-        if (query.length < 2) { document.getElementById('searchResults').innerHTML = ''; return; }
+        if (query.length < 2) {
+            document.getElementById('searchResults').innerHTML = '';
+            return;
+        }
         try {
             const res = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(query)}`, { headers: authManager.getAuthHeaders() });
             if (res.ok) this.renderUserList(await res.json());
@@ -348,12 +378,16 @@ class MessageManager {
         document.getElementById('userSearch').value = '';
         document.getElementById('searchResults').innerHTML = '';
         if (!this.conversations.find(c => c.user_id === userId)) {
-            const res = await fetch(`${API_BASE}/users/${userId}`, { headers: authManager.getAuthHeaders() });
-            if (res.ok) {
-                const user = await res.json();
+            const userRes = await fetch(`${API_BASE}/users/${userId}`, { headers: authManager.getAuthHeaders() });
+            if (userRes.ok) {
+                const user = await userRes.json();
                 this.conversations.unshift({
-                    user_id: user.id, username: user.username, avatar_url: user.avatar_url,
-                    last_message: 'Новый диалог', timestamp: new Date().toISOString(), unread_count: 0
+                    user_id: user.id,
+                    username: user.username,
+                    avatar_url: user.avatar_url,
+                    last_message: 'Новый диалог',
+                    timestamp: new Date().toISOString(),
+                    unread_count: 0
                 });
             }
         }
@@ -364,9 +398,9 @@ class MessageManager {
 
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-        const refresh = async () => {
-            if (this.currentConversation) await this.loadMessages(this.currentConversation);
-            await this.loadConversations();
+        const refresh = () => {
+            if (this.currentConversation) this.loadMessages(this.currentConversation);
+            this.loadConversations();
         };
         this.autoRefreshInterval = setInterval(refresh, 5000);
         document.addEventListener('visibilitychange', () => {
@@ -385,25 +419,27 @@ class MessageManager {
         this.notificationInterval = setInterval(async () => {
             const convs = await this.loadConversations();
             if (!convs) return;
-            const total = convs.reduce((s, c) => s + (c.unread_count || 0), 0);
-            if (total > this.lastUnreadCount && total > 0 && !document.hasFocus()) {
-                this.showNotification('Монеточка', `У вас ${total} новое сообщение${total>1?'ний':''}`);
+            const totalUnread = convs.reduce((s, c) => s + (c.unread_count || 0), 0);
+            if (totalUnread > this.lastUnreadCount && totalUnread > 0 && !document.hasFocus()) {
+                this.showNotification('Монеточка', `У вас ${totalUnread} новое сообщение${totalUnread > 1 ? 'ний' : ''}`);
             }
-            this.lastUnreadCount = total;
-            this.updateNotificationBadge(total);
+            this.lastUnreadCount = totalUnread;
+            this.updateNotificationBadge(totalUnread);
         }, 15000);
     }
 
-    updateNotificationBadge(count) {
-        const link = document.querySelector('.nav-button[href="messages.html"]');
-        if (link) {
-            let badge = link.querySelector('.notification-badge');
-            if (!badge && count > 0) {
-                badge = document.createElement('span'); badge.className = 'notification-badge'; link.appendChild(badge);
+    updateNotificationBadge(unreadCount) {
+        const msgLink = document.querySelector('.nav-button[href="messages.html"]');
+        if (msgLink) {
+            let badge = msgLink.querySelector('.notification-badge');
+            if (!badge && unreadCount > 0) {
+                badge = document.createElement('span');
+                badge.className = 'notification-badge';
+                msgLink.appendChild(badge);
             }
             if (badge) {
-                badge.textContent = count > 99 ? '99+' : count;
-                badge.style.display = count > 0 ? 'inline-block' : 'none';
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                badge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
             }
         }
     }
@@ -412,30 +448,34 @@ class MessageManager {
         if (!('Notification' in window)) return;
         if (Notification.permission === 'granted') new Notification(title, { body, icon: '/favicon.ico' });
         else if (Notification.permission !== 'denied') Notification.requestPermission();
-        if (window.showToast) window.showToast(body, 'info', 5000);
+        this.showToast(body, 'info', 5000);
+    }
+
+    showToast(message, type = 'info', duration = 5000) {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), duration);
     }
 
     formatTimeYakutsk(timestamp) {
         if (!timestamp) return '';
         const date = new Date(timestamp);
-        const yakutsk = new Date(date.getTime() + 9 * 60 * 60 * 1000);
-        return yakutsk.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    }
-
-    showToast(msg, type) {
-        if (window.showToast) window.showToast(msg, type, 3000);
-        else alert(msg);
+        const yakutskDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+        return yakutskDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     }
 }
 
 const messageManager = new MessageManager();
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Ждём инициализации authManager (она одна)
-    const checkAuth = setInterval(() => {
+    const wait = setInterval(() => {
         if (authManager.isAuthenticated()) {
-            clearInterval(checkAuth);
+            clearInterval(wait);
             messageManager.init();
+        } else if (authManager.initialized && !authManager.isAuthenticated()) {
+            clearInterval(wait);
         }
     }, 100);
 });
