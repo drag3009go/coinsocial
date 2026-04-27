@@ -1025,9 +1025,64 @@ body,
 .delete-temp-msg:hover {
     text-decoration: underline;
 }
+.
+
+    /* Индикатор ответа */
+.reply-indicator {
+    background: #e9ecef;
+    border-left: 3px solid #667eea;
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+#cancel-reply {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #999;
+}
+.message-actions {
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.message:hover .message-actions {
+    opacity: 1;
+}
+.message-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: 6px;
+    color: #6c757d;
+}
+.message-actions button:hover {
+    color: #333;
+}
+.sending {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+.error-mark {
+    color: #ef4444;
+    font-size: 10px;
+    margin-top: 4px;
+}
 .message.error {
     background-color: #fee2e2;
     border: 1px solid #ef4444;
 }
+.error-message {
+    color: #d00;
+    text-align: center;
+    padding: 20px;
+}
+    
     
 }
