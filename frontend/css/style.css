@@ -1001,5 +1001,33 @@ body,
     margin-top: 4px;
     display: block;
 }
+
+    /* Стили для временных сообщений */
+.message .sending {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+.message .error-mark {
+    color: #ef4444;
+    font-size: 10px;
+    margin-top: 4px;
+}
+.delete-temp-msg {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 11px;
+    margin-top: 4px;
+    display: inline-block;
+}
+.delete-temp-msg:hover {
+    text-decoration: underline;
+}
+.message.error {
+    background-color: #fee2e2;
+    border: 1px solid #ef4444;
+}
     
 }
