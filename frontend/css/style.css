@@ -1157,5 +1157,36 @@ body,
     color: #ef4444;
     margin-top: 4px;
 }
+
+    /* Заголовок чата с кнопками действий */
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.chat-actions {
+    display: flex;
+    gap: 8px;
+}
+.btn-small {
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 16px;
+    background: #e2e8f0;
+    border: none;
+    cursor: pointer;
+}
+.btn-small.danger {
+    background: #ef4444;
+    color: white;
+}
+/* Чекбоксы сообщений */
+.message-check {
+    margin-right: 8px;
+}
+.message {
+    display: flex;
+    align-items: flex-start;
+}
     
 }
