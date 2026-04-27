@@ -13,18 +13,31 @@ class MessageManager {
         this.isSending = false;
         this.selectionMode = false;
         this.selectedMessages = new Set();
+        this.initialized = false;
     }
 
     async init() {
-        const wait = setInterval(() => {
-            if (authManager.isAuthenticated()) {
-                clearInterval(wait);
+        if (this.initialized) return;
+        console.log('MessageManager init - waiting for auth...');
+        const checkAuth = () => {
+            if (authManager.isAuthenticated() && authManager.getCurrentUser()) {
+                console.log('Auth ready, initializing message manager');
                 this._init();
+                clearInterval(interval);
+            } else if (authManager.initialized && !authManager.isAuthenticated()) {
+                console.warn('User not authenticated, stopping message manager init');
+                clearInterval(interval);
             }
-        }, 100);
+        };
+        const interval = setInterval(checkAuth, 200);
+        // Проверим сразу, чтобы не ждать
+        checkAuth();
     }
 
     async _init() {
+        if (this.initialized) return;
+        this.initialized = true;
+        console.log('Loading conversations...');
         await this.loadConversations();
         this.setupEventListeners();
         this.startAutoRefresh();
@@ -40,29 +53,48 @@ class MessageManager {
             else this.loadAllUsers();
         });
         document.getElementById('toggleUsersBtn')?.addEventListener('click', () => {
+            console.log('Toggle users clicked');
             this.showAllUsers = !this.showAllUsers;
-            this.showAllUsers ? this.loadAllUsers() : (this.renderConversations(), document.getElementById('userSearch').value = '');
+            if (this.showAllUsers) {
+                this.loadAllUsers();
+            } else {
+                this.renderConversations();
+                document.getElementById('userSearch').value = '';
+            }
         });
         document.getElementById('sendMsgBtn')?.addEventListener('click', () => this.sendMessage());
     }
 
     async loadConversations() {
-        if (!authManager.isAuthenticated()) return [];
+        if (!authManager.isAuthenticated()) {
+            console.warn('loadConversations: not authenticated');
+            return [];
+        }
         try {
+            console.log('Fetching conversations...');
             const res = await fetch(`${API_BASE}/messages/conversations`, { headers: authManager.getAuthHeaders() });
             if (res.ok) {
                 this.conversations = await res.json();
+                console.log(`Loaded ${this.conversations.length} conversations`);
                 if (!this.showAllUsers) this.renderConversations();
                 return this.conversations;
+            } else {
+                console.error('Failed to load conversations, status:', res.status);
             }
-        } catch(e) { console.error(e); }
+        } catch(e) { console.error('Error loading conversations:', e); }
         return [];
     }
 
     renderConversations() {
         const container = document.getElementById('conversationsList');
-        if (!container) return;
-        if (!this.conversations.length) { container.innerHTML = '<div class="loading">Нет сообщений</div>'; return; }
+        if (!container) {
+            console.error('conversationsList element not found');
+            return;
+        }
+        if (!this.conversations.length) {
+            container.innerHTML = '<div class="loading">Нет сообщений</div>';
+            return;
+        }
         container.innerHTML = this.conversations.map(conv => `
             <div class="conversation-item ${this.currentConversation === conv.user_id ? 'active' : ''}" data-peer-id="${conv.user_id}">
                 <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
@@ -82,9 +114,10 @@ class MessageManager {
     }
 
     async selectConversation(userId) {
+        console.log('Select conversation:', userId);
         this.currentConversation = userId;
         this.enableMessageInput();
-        this.renderConversations();
+        this.renderConversations(); // обновить активный класс
         this.showLoadingMessages();
         await this.loadMessages(userId);
         this.updateChatHeader();
@@ -470,12 +503,6 @@ class MessageManager {
 const messageManager = new MessageManager();
 
 document.addEventListener('DOMContentLoaded', () => {
-    const wait = setInterval(() => {
-        if (authManager.isAuthenticated()) {
-            clearInterval(wait);
-            messageManager.init();
-        } else if (authManager.initialized && !authManager.isAuthenticated()) {
-            clearInterval(wait);
-        }
-    }, 100);
+    console.log('DOMContentLoaded, waiting for auth...');
+    messageManager.init();
 });
