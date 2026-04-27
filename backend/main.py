@@ -519,9 +519,11 @@ async def get_messages(user_id: str, current_user: dict = Depends(get_current_us
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT * FROM messages
-        WHERE (sender_id = %s AND receiver_id = %s) OR (sender_id = %s AND receiver_id = %s)
-        ORDER BY timestamp ASC
+        SELECT m.*, u.username as sender_username
+        FROM messages m
+        JOIN users u ON m.sender_id = u.id
+        WHERE (m.sender_id = %s AND m.receiver_id = %s) OR (m.sender_id = %s AND m.receiver_id = %s)
+        ORDER BY m.timestamp ASC
     ''', (current_user["id"], user_id, user_id, current_user["id"]))
     messages = cursor.fetchall()
     cursor.execute('''
@@ -531,6 +533,7 @@ async def get_messages(user_id: str, current_user: dict = Depends(get_current_us
     conn.commit()
     conn.close()
     return [dict(msg) for msg in messages]
+    
 
 @app.post("/messages/send")
 async def send_message(message_data: dict, current_user: dict = Depends(get_current_user)):
