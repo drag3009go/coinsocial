@@ -623,9 +623,12 @@ class App {
 
     // ---------- Вспомогательные ----------
     formatDate(timestamp) {
-    const postDate = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - postDate.getTime();
+    if (!timestamp) return '';
+    const utcDate = new Date(timestamp);
+    // Якутск UTC+9
+    const yakutskDate = new Date(utcDate.getTime() + 9 * 60 * 60 * 1000);
+    const nowYakutsk = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const diffMs = nowYakutsk - yakutskDate;
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
@@ -634,8 +637,9 @@ class App {
     if (diffMins < 60) return `${diffMins} мин назад`;
     if (diffHours < 24) return `${diffHours} ч назад`;
     if (diffDays < 7) return `${diffDays} дн назад`;
-    return postDate.toLocaleDateString('ru-RU');
+    return yakutskDate.toLocaleDateString('ru-RU');
     }
+    
 
     escapeHtml(text) {
         const div = document.createElement('div');
