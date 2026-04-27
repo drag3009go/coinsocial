@@ -2,7 +2,7 @@
 
 class MessageManager {
     constructor() {
-        this.initialized = false;
+        this.initialized = true;
         this.currentConversation = null;
         this.conversations = [];
         this.messages = [];
@@ -14,7 +14,7 @@ class MessageManager {
         this.isSending = false;
         this.selectionMode = false;
         this.selectedMessages = new Set();
-        this.initialized = false;
+        
     }
 
 
