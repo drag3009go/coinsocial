@@ -981,5 +981,25 @@ body,
     margin-top: 4px;
     display: block;
 }
+
+    .message.error {
+    background-color: #fee2e2;
+    border: 1px solid #ef4444;
+    color: #7f1a1a;
+}
+.sending {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+.delete-temp-msg {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 11px;
+    margin-top: 4px;
+    display: block;
+}
     
 }
