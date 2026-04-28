@@ -313,27 +313,33 @@ class MessageManager {
         this.showToast(`Удалено ${toDelete.length - this.selectedMessages.size} сообщений`, 'success');
     }
 
-    async sendMessage() {
-        const input = document.getElementById('messageInput');
-        const content = input.value.trim();
-        if (!content || !this.currentConversation) return;
+   async sendMessage() {
+    const input = document.getElementById('messageInput');
+    const content = input.value.trim();
+    if (!content || !this.currentConversation) return;
 
-        const tempId = 'temp_' + Date.now() + '_' + Math.random();
-        const currentUser = authManager.getCurrentUser();
-        this.messages.push({
-            id: tempId,
-            sender_id: currentUser.id,
-            content,
-            timestamp: new Date().toISOString(),
-            is_temp: true
-        });
-        this.renderMessages();
-        this.scrollToBottom();
-        input.value = '';
-        this.sendQueue.push({ content, tempId, receiverId: this.currentConversation });
-        this.processQueue();
-    }
+    const sendBtn = document.getElementById('sendMsgBtn');
+    sendBtn.disabled = true;   // блокируем
 
+    const tempId = 'temp_' + Date.now() + '_' + Math.random();
+    const currentUser = authManager.getCurrentUser();
+    this.messages.push({
+        id: tempId,
+        sender_id: currentUser.id,
+        content,
+        timestamp: new Date().toISOString(),
+        is_temp: true
+    });
+    this.renderMessages();
+    this.scrollToBottom();
+    input.value = '';
+    this.sendQueue.push({ content, tempId, receiverId: this.currentConversation });
+    await this.processQueue();
+
+    // Разблокировка уже внутри processQueue (в finally), но на случай ошибки:
+    sendBtn.disabled = false;
+}
+    
     async processQueue() {
         if (this.isSending) return;
         if (!this.sendQueue.length) return;
@@ -358,9 +364,11 @@ class MessageManager {
                 this.renderMessages();
             }
         } finally {
-            this.isSending = false;
-            this.processQueue();
-        }
+    this.isSending = false;
+    const sendBtn = document.getElementById('sendMsgBtn');
+    if (sendBtn) sendBtn.disabled = false;
+    this.processQueue();
+}
     }
 
     async editMessage(msgId, newContent) {
