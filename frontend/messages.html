@@ -42,20 +42,15 @@
                 <div class="conversations-list" id="conversationsList"></div>
             </div>
 
-            <div class="chat-area">
-                <div class="chat-header" id="chatHeader">
-                    <div>Выберите диалог</div>
-                </div>
-                <div class="chat-messages" id="chatMessages"></div>
-                <div class="chat-input-area">
-                    <div class="chat-input-form">
-                        <input type="text" id="messageInput" class="form-input" placeholder="Введите сообщение..." disabled>
-                        <button id="sendMsgBtn" class="btn btn-primary send-button" disabled>📨</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+<div class="chat-input-area">
+    <div class="chat-input-form">
+        <button id="attachMediaBtn" class="attach-button" title="Прикрепить медиа">📎</button>
+        <input type="file" id="mediaInput" accept="image/*,video/*" multiple style="display: none;">
+        <input type="text" id="messageInput" class="form-input" placeholder="Введите сообщение..." disabled>
+        <button id="sendMsgBtn" class="btn btn-primary send-button" disabled>📨</button>
     </div>
+    <div id="mediaPreviewList" class="media-preview-list"></div>
+</div>
 
     <div class="scroll-buttons">
         <button id="scrollUpBtn" class="scroll-btn" style="display: none;" title="Вверх">↑</button>
