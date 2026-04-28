@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
 async def delete_old_posts_and_messages():
-    """Фоновая задача: удалять посты и сообщения старше 64 часов,
-       а также файлы старше 92 часов (кроме аватаров)."""
+    """Фоновая задача: удалять посты и сообщения старше 168 часов (7 дней),
+       а также файлы старше 168 часов (кроме аватаров)."""
     while True:
         try:
             conn = get_db_connection()
@@ -51,7 +51,7 @@ async def delete_old_posts_and_messages():
                     delete_file(f["url"])
                 cursor.execute("DELETE FROM uploaded_files WHERE post_id = %s", (pid,))
 
-            # 4. Удаляем старые файлы, не привязанные к постам (старше 92 часов)
+            # 4. Удаляем старые файлы, не привязанные к постам (старше 168 часов)
             delete_old_files(168)
 
             conn.commit()
@@ -64,7 +64,6 @@ async def delete_old_posts_and_messages():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Запускаем фоновую задачу при старте
     task = asyncio.create_task(delete_old_posts_and_messages())
     yield
     task.cancel()
@@ -206,19 +205,16 @@ async def create_post(post_data: dict, current_user: dict = Depends(get_current_
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # Убедимся, что пользователь существует
         cursor.execute("SELECT id FROM users WHERE id = %s", (current_user["id"],))
         if not cursor.fetchone():
             conn.close()
             raise HTTPException(404, "User not found in database")
-
         cursor.execute(
             "INSERT INTO posts (id, user_id, content, media_url, media_type, timestamp) VALUES (%s, %s, %s, %s, %s, %s)",
             (post_id, current_user["id"], content, media_url, media_type, datetime.now().isoformat())
         )
         if media_url:
             cursor.execute("UPDATE uploaded_files SET post_id = %s WHERE url = %s", (post_id, media_url))
-
         cursor.execute("UPDATE users SET coins = coins + 5 WHERE id = %s", (current_user["id"],))
         cursor.execute("SELECT coins FROM users WHERE id = %s", (current_user["id"],))
         row = cursor.fetchone()
@@ -280,7 +276,6 @@ async def delete_post(post_id: str, current_user: dict = Depends(get_current_use
     if post["user_id"] != current_user["id"]:
         conn.close()
         raise HTTPException(403, "Not authorized to delete this post")
-    # Удаляем медиафайл
     if post["media_url"]:
         delete_file(post["media_url"])
         cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (post["media_url"],))
@@ -473,74 +468,6 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     conversations.sort(key=lambda x: x["timestamp"], reverse=True)
     return conversations
 
-
-# Удаление сообщения
-@app.delete("/messages/{message_id}")
-async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT sender_id FROM messages WHERE id = %s", (message_id,))
-    msg = cursor.fetchone()
-    if not msg:
-        conn.close()
-        raise HTTPException(404, "Message not found")
-    if msg["sender_id"] != current_user["id"]:
-        conn.close()
-        raise HTTPException(403, "Not authorized")
-    cursor.execute("DELETE FROM messages WHERE id = %s", (message_id,))
-    conn.commit()
-    conn.close()
-    return {"message": "Message deleted"}
-
-# Редактирование сообщения
-@app.put("/messages/{message_id}")
-async def edit_message(message_id: str, data: dict, current_user: dict = Depends(get_current_user)):
-    content = data.get("content")
-    if not content:
-        raise HTTPException(400, "Content required")
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT sender_id FROM messages WHERE id = %s", (message_id,))
-    msg = cursor.fetchone()
-    if not msg:
-        conn.close()
-        raise HTTPException(404, "Message not found")
-    if msg["sender_id"] != current_user["id"]:
-        conn.close()
-        raise HTTPException(403, "Not authorized")
-    cursor.execute("UPDATE messages SET content = %s, timestamp = %s WHERE id = %s", (content, datetime.now().isoformat(), message_id))
-    conn.commit()
-    conn.close()
-    return {"message": "Message updated"}
-    
-
-@app.get("/messages/{user_id}")
-async def get_messages(user_id: str, current_user: dict = Depends(get_current_user)):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT * FROM messages
-        WHERE (sender_id = %s AND receiver_id = %s) OR (sender_id = %s AND receiver_id = %s)
-        ORDER BY timestamp ASC
-    ''', (current_user["id"], user_id, user_id, current_user["id"]))
-    messages = cursor.fetchall()
-    cursor.execute('''
-        UPDATE messages SET is_read = TRUE
-        WHERE sender_id = %s AND receiver_id = %s AND is_read = FALSE
-    ''', (user_id, current_user["id"]))
-    conn.commit()
-    conn.close()
-    result = []
-    for msg in messages:
-        d = dict(msg)
-        if 'media_urls' in d and d['media_urls']:
-            d['media_urls'] = json.loads(d['media_urls'])
-        else:
-            d['media_urls'] = []
-        result.append(d)
-    return result
-    
-
 @app.post("/messages/send")
 async def send_message(message_data: dict, current_user: dict = Depends(get_current_user)):
     receiver_id = message_data.get("receiver_id")
@@ -561,7 +488,6 @@ async def send_message(message_data: dict, current_user: dict = Depends(get_curr
             (msg_id, current_user["id"], receiver_id, content, json.dumps(media_urls), datetime.now().isoformat(), False)
         )
         conn.commit()
-        # Отправляем push-уведомление получателю (если нужно)
         await send_push_notification(receiver_id, "Новое сообщение", f"От {current_user['username']}: {content[:50]}", "/messages.html")
     except Exception as e:
         conn.close()
@@ -570,26 +496,34 @@ async def send_message(message_data: dict, current_user: dict = Depends(get_curr
     conn.close()
     return {"id": msg_id}
 
-
-@app.put("/messages/{message_id}")
-async def edit_message(message_id: str, data: dict, current_user: dict = Depends(get_current_user)):
-    new_content = data.get("content")
-    if not new_content:
-        raise HTTPException(400, "Content required")
+@app.get("/messages/{user_id}")
+async def get_messages(user_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT sender_id FROM messages WHERE id = %s", (message_id,))
-    msg = cursor.fetchone()
-    if not msg:
-        conn.close()
-        raise HTTPException(404, "Message not found")
-    if msg["sender_id"] != current_user["id"]:
-        conn.close()
-        raise HTTPException(403, "Not authorized")
-    cursor.execute("UPDATE messages SET content = %s WHERE id = %s", (new_content, message_id))
+    cursor.execute('''
+        SELECT * FROM messages
+        WHERE (sender_id = %s AND receiver_id = %s) OR (sender_id = %s AND receiver_id = %s)
+        ORDER BY timestamp ASC
+    ''', (current_user["id"], user_id, user_id, current_user["id"]))
+    messages = cursor.fetchall()
+    cursor.execute('''
+        UPDATE messages SET is_read = TRUE
+        WHERE sender_id = %s AND receiver_id = %s AND is_read = FALSE
+    ''', (user_id, current_user["id"]))
     conn.commit()
     conn.close()
-    return {"message": "Message updated"}
+    result = []
+    for msg in messages:
+        d = dict(msg)
+        if d.get("media_urls"):
+            try:
+                d["media_urls"] = json.loads(d["media_urls"])
+            except:
+                d["media_urls"] = []
+        else:
+            d["media_urls"] = []
+        result.append(d)
+    return result
 
 @app.delete("/messages/{message_id}")
 async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
@@ -608,7 +542,25 @@ async def delete_message(message_id: str, current_user: dict = Depends(get_curre
     conn.close()
     return {"message": "Message deleted"}
 
-
+@app.put("/messages/{message_id}")
+async def edit_message(message_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    new_content = data.get("content")
+    if not new_content:
+        raise HTTPException(400, "Content required")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT sender_id FROM messages WHERE id = %s", (message_id,))
+    msg = cursor.fetchone()
+    if not msg:
+        conn.close()
+        raise HTTPException(404, "Message not found")
+    if msg["sender_id"] != current_user["id"]:
+        conn.close()
+        raise HTTPException(403, "Not authorized")
+    cursor.execute("UPDATE messages SET content = %s, timestamp = %s WHERE id = %s", (new_content, datetime.now().isoformat(), message_id))
+    conn.commit()
+    conn.close()
+    return {"message": "Message updated"}
 
 # ---------- Пользователи и поиск ----------
 @app.get("/users")
@@ -695,7 +647,6 @@ async def upload_media(file: UploadFile = File(...), current_user: dict = Depend
 @app.post("/upload/avatar")
 async def upload_avatar(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     content = await file.read()
-    # Удаляем старый аватар
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT avatar_url FROM users WHERE id = %s", (current_user["id"],))
