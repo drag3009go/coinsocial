@@ -1,5 +1,3 @@
-// Глобальные функции getAvatarUrl, escapeHtml, showToast – в auth.js
-
 class MessageManager {
     constructor() {
         this.currentConversation = null;
@@ -13,23 +11,18 @@ class MessageManager {
         this.isSending = false;
         this.selectionMode = false;
         this.selectedMessages = new Set();
-        this.initialized = false;
     }
 
     async init() {
-        if (this.initialized) return;
-        if (!authManager.isAuthenticated()) {
-            window.addEventListener('authReady', () => {
-                if (authManager.isAuthenticated()) this._init();
-            });
-            return;
-        }
-        this._init();
+        const wait = setInterval(() => {
+            if (authManager.isAuthenticated()) {
+                clearInterval(wait);
+                this._init();
+            }
+        }, 100);
     }
 
     async _init() {
-        if (this.initialized) return;
-        this.initialized = true;
         await this.loadConversations();
         this.setupEventListeners();
         this.startAutoRefresh();
@@ -181,6 +174,14 @@ class MessageManager {
         const currentUser = authManager.getCurrentUser();
         if (!currentUser) return;
 
+        if (this.messages.length === 0 && this.currentConversation) {
+            container.innerHTML = '<div class="loading">Нет сообщений. Напишите что-нибудь!</div>';
+            return;
+        } else if (!this.currentConversation) {
+            container.innerHTML = '<div class="loading">Выберите диалог для начала общения</div>';
+            return;
+        }
+
         container.innerHTML = this.messages.map(msg => {
             const isMy = msg.sender_id === currentUser.id;
             const sending = msg.is_temp ? '<div class="sending">⏳ Отправка...</div>' : '';
@@ -268,9 +269,7 @@ class MessageManager {
 
     scrollToBottom() {
         const container = document.getElementById('chatMessages');
-        if (container) {
-            container.scrollTop = container.scrollHeight;
-        }
+        if (container) container.scrollTop = container.scrollHeight;
     }
 
     toggleSelectionMode() {
@@ -313,33 +312,27 @@ class MessageManager {
         this.showToast(`Удалено ${toDelete.length - this.selectedMessages.size} сообщений`, 'success');
     }
 
-   async sendMessage() {
-    const input = document.getElementById('messageInput');
-    const content = input.value.trim();
-    if (!content || !this.currentConversation) return;
+    async sendMessage() {
+        const input = document.getElementById('messageInput');
+        const content = input.value.trim();
+        if (!content || !this.currentConversation) return;
 
-    const sendBtn = document.getElementById('sendMsgBtn');
-    sendBtn.disabled = true;   // блокируем
+        const tempId = 'temp_' + Date.now() + '_' + Math.random();
+        const currentUser = authManager.getCurrentUser();
+        this.messages.push({
+            id: tempId,
+            sender_id: currentUser.id,
+            content,
+            timestamp: new Date().toISOString(),
+            is_temp: true
+        });
+        this.renderMessages();
+        this.scrollToBottom();
+        input.value = '';
+        this.sendQueue.push({ content, tempId, receiverId: this.currentConversation });
+        this.processQueue();
+    }
 
-    const tempId = 'temp_' + Date.now() + '_' + Math.random();
-    const currentUser = authManager.getCurrentUser();
-    this.messages.push({
-        id: tempId,
-        sender_id: currentUser.id,
-        content,
-        timestamp: new Date().toISOString(),
-        is_temp: true
-    });
-    this.renderMessages();
-    this.scrollToBottom();
-    input.value = '';
-    this.sendQueue.push({ content, tempId, receiverId: this.currentConversation });
-    await this.processQueue();
-
-    // Разблокировка уже внутри processQueue (в finally), но на случай ошибки:
-    sendBtn.disabled = false;
-}
-    
     async processQueue() {
         if (this.isSending) return;
         if (!this.sendQueue.length) return;
@@ -364,11 +357,9 @@ class MessageManager {
                 this.renderMessages();
             }
         } finally {
-    this.isSending = false;
-    const sendBtn = document.getElementById('sendMsgBtn');
-    if (sendBtn) sendBtn.disabled = false;
-    this.processQueue();
-}
+            this.isSending = false;
+            this.processQueue();
+        }
     }
 
     async editMessage(msgId, newContent) {
@@ -541,6 +532,7 @@ class MessageManager {
 }
 
 const messageManager = new MessageManager();
+
 document.addEventListener('DOMContentLoaded', () => {
     messageManager.init();
 });
