@@ -1083,3 +1083,43 @@ body,
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+/* Фиксированный размер для картинок и видео */
+.message-media {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+.msg-media-img,
+.msg-media-video {
+    max-width: 250px;
+    max-height: 180px;
+    width: auto;
+    height: auto;
+    border-radius: 12px;
+    object-fit: cover;
+    background: #000;
+}
+/* Индикатор загрузки видео */
+.video-wrapper {
+    position: relative;
+    display: inline-block;
+}
+.video-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 30px;
+    height: 30px;
+    border: 3px solid rgba(255,255,255,0.5);
+    border-top: 3px solid white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    pointer-events: none;
+}
+@keyframes spin {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
