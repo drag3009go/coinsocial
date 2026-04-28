@@ -246,7 +246,7 @@ class MessageManager {
                         <div class="username">${escapeHtml(conv.username)}</div>
                     </div>
                     <div class="chat-actions">
-                        <button id="selectionModeBtn" class="btn-small">${this.selectionMode ? 'Отмена' : 'Выбрать'</button>
+                        <button id="selectionModeBtn" class="btn-small">${this.selectionMode ? 'Отмена' : 'Выбрать'}</button>
                         ${this.selectionMode ? '<button id="deleteSelectedBtn" class="btn-small danger">Удалить выбранные</button>' : ''}
                     </div>
                 `;
@@ -331,7 +331,8 @@ class MessageManager {
             if (msg.media_urls && Array.isArray(msg.media_urls) && msg.media_urls.length) {
                 mediaHtml = '<div class="message-media">' + msg.media_urls.map((url, idx) => {
                     const videoId = `${msg.id}_${idx}`;
-                    if (url && url.match(/\.(mp4|webm|ogg)/i)) {
+                    const isVideo = url && (url.includes('.mp4') || url.includes('.webm') || url.includes('.ogg'));
+                    if (isVideo) {
                         return `
                             <div class="video-wrapper">
                                 <video src="${url}" controls class="msg-media-video" preload="metadata" data-video-id="${videoId}"></video>
@@ -382,7 +383,7 @@ class MessageManager {
             });
         }
 
-        // Добавляем слушатели для видео, чтобы отслеживать воспроизведение
+        // Добавляем слушатели для видео
         document.querySelectorAll('.msg-media-video').forEach(video => {
             const wrapper = video.closest('.video-wrapper');
             const loader = wrapper?.querySelector('.video-loading');
@@ -392,16 +393,9 @@ class MessageManager {
                 }, { once: true });
                 if (video.readyState >= 3) loader.style.display = 'none';
             }
-            // Устанавливаем флаг воспроизведения
-            video.addEventListener('play', () => {
-                this.isVideoPlaying = true;
-            });
-            video.addEventListener('pause', () => {
-                this.isVideoPlaying = false;
-            });
-            video.addEventListener('ended', () => {
-                this.isVideoPlaying = false;
-            });
+            video.addEventListener('play', () => { this.isVideoPlaying = true; });
+            video.addEventListener('pause', () => { this.isVideoPlaying = false; });
+            video.addEventListener('ended', () => { this.isVideoPlaying = false; });
         });
     }
 
@@ -680,7 +674,6 @@ class MessageManager {
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
         const refresh = () => {
-            // Если сейчас проигрывается видео – пропускаем автообновление
             if (this.isVideoPlaying) return;
             if (this.currentConversation) {
                 this.loadMessages(this.currentConversation);
