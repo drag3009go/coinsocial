@@ -13,7 +13,7 @@ class MessageManager {
         this.selectedMessages = new Set();
         this.attachedFiles = [];
         this.videoTimes = new Map();
-        this.isVideoPlaying = false; // флаг: проигрывается ли видео
+        this.isVideoPlaying = false;
     }
 
     async init() {
@@ -383,7 +383,7 @@ class MessageManager {
             });
         }
 
-        // Добавляем слушатели для видео
+        // Установка обработчиков видео и флага воспроизведения
         document.querySelectorAll('.msg-media-video').forEach(video => {
             const wrapper = video.closest('.video-wrapper');
             const loader = wrapper?.querySelector('.video-loading');
@@ -393,9 +393,25 @@ class MessageManager {
                 }, { once: true });
                 if (video.readyState >= 3) loader.style.display = 'none';
             }
-            video.addEventListener('play', () => { this.isVideoPlaying = true; });
-            video.addEventListener('pause', () => { this.isVideoPlaying = false; });
-            video.addEventListener('ended', () => { this.isVideoPlaying = false; });
+            // Удаляем предыдущие обработчики (если есть) и добавляем новые
+            const playHandler = () => {
+                this.isVideoPlaying = true;
+                console.log('Video playing, auto-refresh paused');
+            };
+            const pauseHandler = () => {
+                this.isVideoPlaying = false;
+                console.log('Video paused, auto-refresh resumed');
+            };
+            const endedHandler = () => {
+                this.isVideoPlaying = false;
+                console.log('Video ended, auto-refresh resumed');
+            };
+            video.removeEventListener('play', playHandler);
+            video.removeEventListener('pause', pauseHandler);
+            video.removeEventListener('ended', endedHandler);
+            video.addEventListener('play', playHandler);
+            video.addEventListener('pause', pauseHandler);
+            video.addEventListener('ended', endedHandler);
         });
     }
 
@@ -674,20 +690,24 @@ class MessageManager {
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
         const refresh = () => {
-            if (this.isVideoPlaying) return;
+            if (this.isVideoPlaying) {
+                console.log('Auto-refresh skipped: video playing');
+                return;
+            }
             if (this.currentConversation) {
                 this.loadMessages(this.currentConversation);
             }
             this.loadConversations();
         };
-        this.autoRefreshInterval = setInterval(refresh, 5000);
+        // Интервал 10 секунд (можно подстроить под свои нужды)
+        this.autoRefreshInterval = setInterval(refresh, 10000);
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
             } else {
                 if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-                this.autoRefreshInterval = setInterval(refresh, 5000);
-                refresh();
+                this.autoRefreshInterval = setInterval(refresh, 10000);
+                // Не вызываем refresh сразу
             }
         });
     }
