@@ -1,8 +1,7 @@
-// Нет объявления API_BASE, getAvatarUrl, escapeHtml – они в auth.js
+// Глобальные функции getAvatarUrl, escapeHtml, showToast – в auth.js
 
 class MessageManager {
     constructor() {
-        this.initialized = false;
         this.currentConversation = null;
         this.conversations = [];
         this.messages = [];
@@ -14,31 +13,51 @@ class MessageManager {
         this.isSending = false;
         this.selectionMode = false;
         this.selectedMessages = new Set();
-        
+        this.initialized = false;
     }
-
 
     async init() {
-    if (this.initialized) return;
-    if (!authManager.isAuthenticated()) {
-        console.log('MessageManager: user not authenticated, waiting for authReady');
-        window.addEventListener('authReady', () => {
-            if (authManager.isAuthenticated()) this._init();
-        });
-        return;
+        if (this.initialized) return;
+        if (!authManager.isAuthenticated()) {
+            window.addEventListener('authReady', () => {
+                if (authManager.isAuthenticated()) this._init();
+            });
+            return;
+        }
+        this._init();
     }
-    this._init();
-    }
-    
+
     async _init() {
-    if (this.initialized) return;
-    this.initialized = true;
-    console.log('MessageManager: initializing...');
-    await this.loadConversations();
-    this.setupEventListeners();
-    this.startAutoRefresh();
-    this.startNotificationChecker();
-    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+        if (this.initialized) return;
+        this.initialized = true;
+        await this.loadConversations();
+        this.setupEventListeners();
+        this.startAutoRefresh();
+        this.startNotificationChecker();
+        this.setupScrollButtons();
+        if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+    }
+
+    setupScrollButtons() {
+        const scrollUp = document.getElementById('scrollUpBtn');
+        const scrollDown = document.getElementById('scrollDownBtn');
+        if (!scrollUp || !scrollDown) return;
+
+        const checkScroll = () => {
+            const scrollTop = window.scrollY;
+            const windowHeight = window.innerHeight;
+            const docHeight = document.documentElement.scrollHeight;
+            const isNearBottom = scrollTop + windowHeight >= docHeight - 100;
+            const isNearTop = scrollTop < 50;
+
+            if (scrollDown) scrollDown.style.display = !isNearBottom ? 'flex' : 'none';
+            if (scrollUp) scrollUp.style.display = !isNearTop && scrollTop > 200 ? 'flex' : 'none';
+        };
+
+        window.addEventListener('scroll', checkScroll);
+        scrollUp.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+        scrollDown.onclick = () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+        checkScroll();
     }
 
     setupEventListeners() {
@@ -49,48 +68,29 @@ class MessageManager {
             else this.loadAllUsers();
         });
         document.getElementById('toggleUsersBtn')?.addEventListener('click', () => {
-            console.log('Toggle users clicked');
             this.showAllUsers = !this.showAllUsers;
-            if (this.showAllUsers) {
-                this.loadAllUsers();
-            } else {
-                this.renderConversations();
-                document.getElementById('userSearch').value = '';
-            }
+            this.showAllUsers ? this.loadAllUsers() : (this.renderConversations(), document.getElementById('userSearch').value = '');
         });
         document.getElementById('sendMsgBtn')?.addEventListener('click', () => this.sendMessage());
     }
 
     async loadConversations() {
-        if (!authManager.isAuthenticated()) {
-            console.warn('loadConversations: not authenticated');
-            return [];
-        }
+        if (!authManager.isAuthenticated()) return [];
         try {
-            console.log('Fetching conversations...');
             const res = await fetch(`${API_BASE}/messages/conversations`, { headers: authManager.getAuthHeaders() });
             if (res.ok) {
                 this.conversations = await res.json();
-                console.log(`Loaded ${this.conversations.length} conversations`);
                 if (!this.showAllUsers) this.renderConversations();
                 return this.conversations;
-            } else {
-                console.error('Failed to load conversations, status:', res.status);
             }
-        } catch(e) { console.error('Error loading conversations:', e); }
+        } catch(e) { console.error(e); }
         return [];
     }
 
     renderConversations() {
         const container = document.getElementById('conversationsList');
-        if (!container) {
-            console.error('conversationsList element not found');
-            return;
-        }
-        if (!this.conversations.length) {
-            container.innerHTML = '<div class="loading">Нет сообщений</div>';
-            return;
-        }
+        if (!container) return;
+        if (!this.conversations.length) { container.innerHTML = '<div class="loading">Нет сообщений</div>'; return; }
         container.innerHTML = this.conversations.map(conv => `
             <div class="conversation-item ${this.currentConversation === conv.user_id ? 'active' : ''}" data-peer-id="${conv.user_id}">
                 <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
@@ -110,10 +110,9 @@ class MessageManager {
     }
 
     async selectConversation(userId) {
-        console.log('Select conversation:', userId);
         this.currentConversation = userId;
         this.enableMessageInput();
-        this.renderConversations(); // обновить активный класс
+        this.renderConversations();
         this.showLoadingMessages();
         await this.loadMessages(userId);
         this.updateChatHeader();
@@ -207,7 +206,7 @@ class MessageManager {
                 e.stopPropagation();
                 const msgId = btn.dataset.id;
                 const content = btn.dataset.content;
-                this.showMessageMenu(msgId, content);
+                this.showMessageMenu(msgId, content, e);
             };
         });
 
@@ -222,19 +221,56 @@ class MessageManager {
         }
     }
 
-    showMessageMenu(msgId, currentContent) {
-        const action = prompt('Выберите действие:\n1 - Редактировать\n2 - Удалить', '1');
-        if (action === '1') {
+    showMessageMenu(msgId, currentContent, event) {
+        const existing = document.getElementById('customMsgMenu');
+        if (existing) existing.remove();
+
+        const menu = document.createElement('div');
+        menu.id = 'customMsgMenu';
+        menu.className = 'custom-message-menu';
+        menu.innerHTML = `
+            <button id="menuEditBtn">✏️ Редактировать</button>
+            <button id="menuDeleteBtn">🗑️ Удалить</button>
+        `;
+        document.body.appendChild(menu);
+
+        const btn = event?.target;
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            menu.style.top = `${rect.bottom + window.scrollY}px`;
+            menu.style.left = `${rect.left + window.scrollX - 80}px`;
+        } else {
+            menu.style.top = '50%';
+            menu.style.left = '50%';
+            menu.style.transform = 'translate(-50%, -50%)';
+        }
+
+        const close = () => menu.remove();
+        document.getElementById('menuEditBtn')?.addEventListener('click', () => {
             const newContent = prompt('Введите новый текст:', currentContent);
             if (newContent && newContent !== currentContent) this.editMessage(msgId, newContent);
-        } else if (action === '2') {
+            close();
+        });
+        document.getElementById('menuDeleteBtn')?.addEventListener('click', () => {
             if (confirm('Удалить сообщение?')) this.deleteMessage(msgId);
-        }
+            close();
+        });
+        setTimeout(() => {
+            const onClickOutside = (e) => {
+                if (!menu.contains(e.target)) {
+                    menu.remove();
+                    document.removeEventListener('click', onClickOutside);
+                }
+            };
+            document.addEventListener('click', onClickOutside);
+        }, 0);
     }
 
     scrollToBottom() {
         const container = document.getElementById('chatMessages');
-        if (container) container.scrollTop = container.scrollHeight;
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        }
     }
 
     toggleSelectionMode() {
@@ -497,8 +533,6 @@ class MessageManager {
 }
 
 const messageManager = new MessageManager();
-
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOMContentLoaded, waiting for auth...');
     messageManager.init();
 });
