@@ -12,7 +12,8 @@ class MessageManager {
         this.selectionMode = false;
         this.selectedMessages = new Set();
         this.attachedFiles = [];
-        this.videoTimes = new Map(); // хранилище текущего времени видео (id видео -> время)
+        this.videoTimes = new Map();
+        this.isVideoPlaying = false; // флаг: проигрывается ли видео
     }
 
     async init() {
@@ -245,7 +246,7 @@ class MessageManager {
                         <div class="username">${escapeHtml(conv.username)}</div>
                     </div>
                     <div class="chat-actions">
-                        <button id="selectionModeBtn" class="btn-small">${this.selectionMode ? 'Отмена' : 'Выбрать'}</button>
+                        <button id="selectionModeBtn" class="btn-small">${this.selectionMode ? 'Отмена' : 'Выбрать'</button>
                         ${this.selectionMode ? '<button id="deleteSelectedBtn" class="btn-small danger">Удалить выбранные</button>' : ''}
                     </div>
                 `;
@@ -273,7 +274,6 @@ class MessageManager {
         document.getElementById('chatLoading')?.remove();
     }
 
-    // Перед загрузкой сообщений сохраняем текущее время видео
     saveVideoTimes() {
         this.videoTimes.clear();
         document.querySelectorAll('.msg-media-video').forEach(video => {
@@ -284,20 +284,18 @@ class MessageManager {
         });
     }
 
-    // После рендера восстанавливаем позицию видео
     restoreVideoTimes() {
         this.videoTimes.forEach((time, videoId) => {
             const video = document.querySelector(`.msg-media-video[data-video-id="${videoId}"]`);
             if (video && video.currentTime !== time) {
                 video.currentTime = time;
-                // Не auto-play, просто устанавливаем позицию
             }
         });
     }
 
     async loadMessages(userId) {
         if (!authManager.isAuthenticated()) return;
-        this.saveVideoTimes(); // сохраняем позиции перед обновлением
+        this.saveVideoTimes();
         try {
             const res = await fetch(`${API_BASE}/messages/${userId}`, {
                 headers: authManager.getAuthHeaders()
@@ -305,7 +303,7 @@ class MessageManager {
             if (res.ok) {
                 this.messages = await res.json();
                 this.renderMessages();
-                this.restoreVideoTimes(); // восстанавливаем позиции
+                this.restoreVideoTimes();
                 this.scrollToBottom();
             } else {
                 this.showToast('Ошибка загрузки сообщений', 'error');
@@ -366,7 +364,6 @@ class MessageManager {
             `;
         }).join('');
 
-        // Обработчики меню и чекбоксов
         document.querySelectorAll('.message-menu-btn').forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
@@ -385,7 +382,7 @@ class MessageManager {
             });
         }
 
-        // Скрываем индикаторы загрузки, когда видео готово
+        // Добавляем слушатели для видео, чтобы отслеживать воспроизведение
         document.querySelectorAll('.msg-media-video').forEach(video => {
             const wrapper = video.closest('.video-wrapper');
             const loader = wrapper?.querySelector('.video-loading');
@@ -393,9 +390,18 @@ class MessageManager {
                 video.addEventListener('canplaythrough', () => {
                     loader.style.display = 'none';
                 }, { once: true });
-                // Если видео уже загружено
                 if (video.readyState >= 3) loader.style.display = 'none';
             }
+            // Устанавливаем флаг воспроизведения
+            video.addEventListener('play', () => {
+                this.isVideoPlaying = true;
+            });
+            video.addEventListener('pause', () => {
+                this.isVideoPlaying = false;
+            });
+            video.addEventListener('ended', () => {
+                this.isVideoPlaying = false;
+            });
         });
     }
 
@@ -674,7 +680,11 @@ class MessageManager {
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
         const refresh = () => {
-            if (this.currentConversation) this.loadMessages(this.currentConversation);
+            // Если сейчас проигрывается видео – пропускаем автообновление
+            if (this.isVideoPlaying) return;
+            if (this.currentConversation) {
+                this.loadMessages(this.currentConversation);
+            }
             this.loadConversations();
         };
         this.autoRefreshInterval = setInterval(refresh, 5000);
