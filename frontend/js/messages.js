@@ -60,18 +60,18 @@ class MessageManager {
         mediaInput.onchange = async (e) => {
             const files = Array.from(e.target.files);
             if (this.attachedFiles.length + files.length > 3) {
-                alert('Можно прикрепить не более 3 файлов');
+                this.showToast('Можно прикрепить не более 3 файлов', 'error');
                 return;
             }
             for (const file of files) {
                 if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-                    alert('Можно прикреплять только изображения и видео');
+                    this.showToast('Можно прикреплять только изображения и видео', 'error');
                     continue;
                 }
                 if (file.type.startsWith('video/')) {
                     const duration = await this.getVideoDuration(file);
                     if (duration > 60) {
-                        alert('Видео не должно превышать 60 секунд');
+                        this.showToast('Видео не должно превышать 60 секунд', 'error');
                         continue;
                     }
                 }
@@ -175,7 +175,9 @@ class MessageManager {
     async loadConversations() {
         if (!authManager.isAuthenticated()) return [];
         try {
-            const res = await fetch(`${API_BASE}/messages/conversations`, { headers: authManager.getAuthHeaders() });
+            const res = await fetch(`${API_BASE}/messages/conversations`, {
+                headers: authManager.getAuthHeaders()
+            });
             if (res.ok) {
                 this.conversations = await res.json();
                 if (!this.showAllUsers) this.renderConversations();
@@ -188,7 +190,10 @@ class MessageManager {
     renderConversations() {
         const container = document.getElementById('conversationsList');
         if (!container) return;
-        if (!this.conversations.length) { container.innerHTML = '<div class="loading">Нет сообщений</div>'; return; }
+        if (!this.conversations.length) {
+            container.innerHTML = '<div class="loading">Нет сообщений</div>';
+            return;
+        }
         container.innerHTML = this.conversations.map(conv => `
             <div class="conversation-item ${this.currentConversation === conv.user_id ? 'active' : ''}" data-peer-id="${conv.user_id}">
                 <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
@@ -222,7 +227,11 @@ class MessageManager {
     enableMessageInput() {
         const input = document.getElementById('messageInput');
         const btn = document.getElementById('sendMsgBtn');
-        if (input && btn) { input.disabled = false; btn.disabled = false; input.placeholder = "Введите сообщение..."; }
+        if (input && btn) {
+            input.disabled = false;
+            btn.disabled = false;
+            input.placeholder = "Введите сообщение...";
+        }
     }
 
     updateChatHeader() {
@@ -246,7 +255,9 @@ class MessageManager {
                 const delBtn = document.getElementById('deleteSelectedBtn');
                 if (delBtn) delBtn.onclick = () => this.deleteSelectedMessages();
             }
-        } else header.innerHTML = '<div>Выберите диалог</div>';
+        } else {
+            header.innerHTML = '<div>Выберите диалог</div>';
+        }
     }
 
     showLoadingMessages() {
@@ -259,16 +270,22 @@ class MessageManager {
             container.appendChild(loader);
         }
     }
-    hideLoadingMessages() { document.getElementById('chatLoading')?.remove(); }
+    hideLoadingMessages() {
+        document.getElementById('chatLoading')?.remove();
+    }
 
     async loadMessages(userId) {
         if (!authManager.isAuthenticated()) return;
         try {
-            const res = await fetch(`${API_BASE}/messages/${userId}`, { headers: authManager.getAuthHeaders() });
+            const res = await fetch(`${API_BASE}/messages/${userId}`, {
+                headers: authManager.getAuthHeaders()
+            });
             if (res.ok) {
                 this.messages = await res.json();
                 this.renderMessages();
                 this.scrollToBottom();
+            } else {
+                this.showToast('Ошибка загрузки сообщений', 'error');
             }
         } catch(e) { console.error(e); }
     }
@@ -289,7 +306,6 @@ class MessageManager {
 
         container.innerHTML = this.messages.map(msg => {
             const isMy = msg.sender_id === currentUser.id;
-            // Генерация медиа
             let mediaHtml = '';
             if (msg.media_urls && Array.isArray(msg.media_urls) && msg.media_urls.length) {
                 mediaHtml = '<div class="message-media">' + msg.media_urls.map(url => {
@@ -301,7 +317,6 @@ class MessageManager {
                     return '';
                 }).join('') + '</div>';
             }
-
             const sending = msg.is_temp ? '<div class="sending">⏳ Отправка...</div>' : '';
             const error = msg.error ? '<div class="error-badge">⚠️ Ошибка</div>' : '';
             const check = this.selectionMode ? `<input type="checkbox" class="msg-checkbox" data-id="${msg.id}" ${this.selectedMessages.has(msg.id) ? 'checked' : ''}>` : '';
@@ -345,7 +360,6 @@ class MessageManager {
     showMessageMenu(msgId, currentContent, event) {
         const existing = document.getElementById('customMsgMenu');
         if (existing) existing.remove();
-
         const menu = document.createElement('div');
         menu.id = 'customMsgMenu';
         menu.className = 'custom-message-menu';
@@ -354,7 +368,6 @@ class MessageManager {
             <button id="menuDeleteBtn">🗑️ Удалить</button>
         `;
         document.body.appendChild(menu);
-
         const btn = event?.target;
         if (btn) {
             const rect = btn.getBoundingClientRect();
@@ -365,7 +378,6 @@ class MessageManager {
             menu.style.left = '50%';
             menu.style.transform = 'translate(-50%, -50%)';
         }
-
         const close = () => menu.remove();
         document.getElementById('menuEditBtn')?.addEventListener('click', () => {
             const newContent = prompt('Введите новый текст:', currentContent);
@@ -438,7 +450,7 @@ class MessageManager {
         const sendBtn = document.getElementById('sendMsgBtn');
         sendBtn.disabled = true;
 
-        // Загружаем файлы
+        // Upload files
         let mediaUrls = [];
         for (const file of this.attachedFiles) {
             const formData = new FormData();
@@ -451,23 +463,22 @@ class MessageManager {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.media_url) {
-                        mediaUrls.push(data.media_url);
-                    } else {
-                        console.error('Ответ сервера не содержит media_url', data);
-                    }
+                    if (data.media_url) mediaUrls.push(data.media_url);
+                    else this.showToast('Сервер не вернул ссылку', 'error');
                 } else {
-                    throw new Error('Upload failed');
+                    this.showToast(`Ошибка загрузки: ${res.status}`, 'error');
+                    sendBtn.disabled = false;
+                    return;
                 }
-            } catch (err) {
+            } catch(err) {
                 console.error(err);
-                this.showToast('Ошибка загрузки медиа', 'error');
+                this.showToast('Ошибка сети при загрузке', 'error');
                 sendBtn.disabled = false;
                 return;
             }
         }
 
-        // Временное сообщение (оптимистичная отправка)
+        // Optimistic update
         const tempId = 'temp_' + Date.now() + '_' + Math.random();
         const currentUser = authManager.getCurrentUser();
         const tempMsg = {
@@ -481,13 +492,11 @@ class MessageManager {
         this.messages.push(tempMsg);
         this.renderMessages();
         this.scrollToBottom();
-
-        // Очищаем форму
         input.value = '';
         this.attachedFiles = [];
         this.renderMediaPreview();
 
-        // Отправляем на сервер
+        // Send to server
         try {
             const res = await fetch(`${API_BASE}/messages/send`, {
                 method: 'POST',
@@ -503,9 +512,11 @@ class MessageManager {
                 await this.loadMessages(this.currentConversation);
                 this.scrollToBottom();
             } else {
+                const errText = await res.text();
+                this.showToast(`Ошибка отправки: ${res.status} ${errText}`, 'error');
                 throw new Error('Send failed');
             }
-        } catch (err) {
+        } catch(err) {
             console.error(err);
             const idx = this.messages.findIndex(m => m.id === tempId);
             if (idx !== -1) {
@@ -513,6 +524,7 @@ class MessageManager {
                 this.messages[idx].is_temp = false;
                 this.renderMessages();
             }
+            this.showToast('Не удалось отправить сообщение', 'error');
         } finally {
             sendBtn.disabled = false;
             document.getElementById('messageInput').focus();
@@ -535,7 +547,7 @@ class MessageManager {
         } catch {
             originalMsg.content = savedContent;
             this.renderMessages();
-            alert('Не удалось изменить сообщение');
+            this.showToast('Не удалось изменить сообщение', 'error');
         }
     }
 
@@ -550,7 +562,7 @@ class MessageManager {
         } catch {
             this.messages.splice(idx, 0, removed);
             this.renderMessages();
-            alert('Не удалось удалить сообщение');
+            this.showToast('Не удалось удалить сообщение', 'error');
         }
     }
 
@@ -575,7 +587,10 @@ class MessageManager {
     renderUserList(users) {
         const container = document.getElementById('searchResults');
         if (!container) return;
-        if (!users.length) { container.innerHTML = '<div class="loading">Нет пользователей</div>'; return; }
+        if (!users.length) {
+            container.innerHTML = '<div class="loading">Нет пользователей</div>';
+            return;
+        }
         container.innerHTML = users.map(user => `
             <div class="conversation-item" data-peer-id="${user.id}">
                 <img src="${getAvatarUrl(user.avatar_url)}" class="avatar">
@@ -689,7 +704,6 @@ class MessageManager {
 }
 
 const messageManager = new MessageManager();
-
 document.addEventListener('DOMContentLoaded', () => {
     messageManager.init();
 });
