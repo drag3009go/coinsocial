@@ -12,6 +12,7 @@ class MessageManager {
         this.selectionMode = false;
         this.selectedMessages = new Set();
         this.attachedFiles = [];
+        this.videoTimes = new Map(); // хранилище текущего времени видео (id видео -> время)
     }
 
     async init() {
@@ -175,9 +176,7 @@ class MessageManager {
     async loadConversations() {
         if (!authManager.isAuthenticated()) return [];
         try {
-            const res = await fetch(`${API_BASE}/messages/conversations`, {
-                headers: authManager.getAuthHeaders()
-            });
+            const res = await fetch(`${API_BASE}/messages/conversations`, { headers: authManager.getAuthHeaders() });
             if (res.ok) {
                 this.conversations = await res.json();
                 if (!this.showAllUsers) this.renderConversations();
@@ -274,8 +273,31 @@ class MessageManager {
         document.getElementById('chatLoading')?.remove();
     }
 
+    // Перед загрузкой сообщений сохраняем текущее время видео
+    saveVideoTimes() {
+        this.videoTimes.clear();
+        document.querySelectorAll('.msg-media-video').forEach(video => {
+            const videoId = video.getAttribute('data-video-id');
+            if (videoId && !video.paused) {
+                this.videoTimes.set(videoId, video.currentTime);
+            }
+        });
+    }
+
+    // После рендера восстанавливаем позицию видео
+    restoreVideoTimes() {
+        this.videoTimes.forEach((time, videoId) => {
+            const video = document.querySelector(`.msg-media-video[data-video-id="${videoId}"]`);
+            if (video && video.currentTime !== time) {
+                video.currentTime = time;
+                // Не auto-play, просто устанавливаем позицию
+            }
+        });
+    }
+
     async loadMessages(userId) {
         if (!authManager.isAuthenticated()) return;
+        this.saveVideoTimes(); // сохраняем позиции перед обновлением
         try {
             const res = await fetch(`${API_BASE}/messages/${userId}`, {
                 headers: authManager.getAuthHeaders()
@@ -283,6 +305,7 @@ class MessageManager {
             if (res.ok) {
                 this.messages = await res.json();
                 this.renderMessages();
+                this.restoreVideoTimes(); // восстанавливаем позиции
                 this.scrollToBottom();
             } else {
                 this.showToast('Ошибка загрузки сообщений', 'error');
@@ -308,9 +331,15 @@ class MessageManager {
             const isMy = msg.sender_id === currentUser.id;
             let mediaHtml = '';
             if (msg.media_urls && Array.isArray(msg.media_urls) && msg.media_urls.length) {
-                mediaHtml = '<div class="message-media">' + msg.media_urls.map(url => {
+                mediaHtml = '<div class="message-media">' + msg.media_urls.map((url, idx) => {
+                    const videoId = `${msg.id}_${idx}`;
                     if (url && url.match(/\.(mp4|webm|ogg)/i)) {
-                        return `<video src="${url}" controls class="msg-media-video"></video>`;
+                        return `
+                            <div class="video-wrapper">
+                                <video src="${url}" controls class="msg-media-video" preload="metadata" data-video-id="${videoId}"></video>
+                                <div class="video-loading" style="display: flex;"></div>
+                            </div>
+                        `;
                     } else if (url) {
                         return `<img src="${url}" class="msg-media-img" loading="lazy">`;
                     }
@@ -337,6 +366,7 @@ class MessageManager {
             `;
         }).join('');
 
+        // Обработчики меню и чекбоксов
         document.querySelectorAll('.message-menu-btn').forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
@@ -345,7 +375,6 @@ class MessageManager {
                 this.showMessageMenu(msgId, content, e);
             };
         });
-
         if (this.selectionMode) {
             document.querySelectorAll('.msg-checkbox').forEach(cb => {
                 cb.onchange = () => {
@@ -355,6 +384,19 @@ class MessageManager {
                 };
             });
         }
+
+        // Скрываем индикаторы загрузки, когда видео готово
+        document.querySelectorAll('.msg-media-video').forEach(video => {
+            const wrapper = video.closest('.video-wrapper');
+            const loader = wrapper?.querySelector('.video-loading');
+            if (loader) {
+                video.addEventListener('canplaythrough', () => {
+                    loader.style.display = 'none';
+                }, { once: true });
+                // Если видео уже загружено
+                if (video.readyState >= 3) loader.style.display = 'none';
+            }
+        });
     }
 
     showMessageMenu(msgId, currentContent, event) {
@@ -450,7 +492,6 @@ class MessageManager {
         const sendBtn = document.getElementById('sendMsgBtn');
         sendBtn.disabled = true;
 
-        // Upload files
         let mediaUrls = [];
         for (const file of this.attachedFiles) {
             const formData = new FormData();
@@ -478,7 +519,6 @@ class MessageManager {
             }
         }
 
-        // Optimistic update
         const tempId = 'temp_' + Date.now() + '_' + Math.random();
         const currentUser = authManager.getCurrentUser();
         const tempMsg = {
@@ -496,7 +536,6 @@ class MessageManager {
         this.attachedFiles = [];
         this.renderMediaPreview();
 
-        // Send to server
         try {
             const res = await fetch(`${API_BASE}/messages/send`, {
                 method: 'POST',
