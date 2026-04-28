@@ -468,6 +468,7 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     conversations.sort(key=lambda x: x["timestamp"], reverse=True)
     return conversations
 
+
 @app.post("/messages/send")
 async def send_message(message_data: dict, current_user: dict = Depends(get_current_user)):
     receiver_id = message_data.get("receiver_id")
@@ -488,13 +489,16 @@ async def send_message(message_data: dict, current_user: dict = Depends(get_curr
             (msg_id, current_user["id"], receiver_id, content, json.dumps(media_urls), datetime.now().isoformat(), False)
         )
         conn.commit()
-        await send_push_notification(receiver_id, "Новое сообщение", f"От {current_user['username']}: {content[:50]}", "/messages.html")
+        # push-уведомления (можно закомментировать, если не настроены)
+        # await send_push_notification(receiver_id, "Новое сообщение", f"От {current_user['username']}: {content[:50]}", "/messages.html")
     except Exception as e:
         conn.close()
         logger.error(f"Send message error: {e}")
         raise HTTPException(500, "Database error")
     conn.close()
     return {"id": msg_id}
+
+
 
 @app.get("/messages/{user_id}")
 async def get_messages(user_id: str, current_user: dict = Depends(get_current_user)):
@@ -515,15 +519,22 @@ async def get_messages(user_id: str, current_user: dict = Depends(get_current_us
     result = []
     for msg in messages:
         d = dict(msg)
+        # Преобразуем JSONB в список, если поле есть
         if d.get("media_urls"):
-            try:
-                d["media_urls"] = json.loads(d["media_urls"])
-            except:
+            if isinstance(d["media_urls"], str):
+                try:
+                    d["media_urls"] = json.loads(d["media_urls"])
+                except:
+                    d["media_urls"] = []
+            elif isinstance(d["media_urls"], list):
+                pass
+            else:
                 d["media_urls"] = []
         else:
             d["media_urls"] = []
         result.append(d)
     return result
+
 
 @app.delete("/messages/{message_id}")
 async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
