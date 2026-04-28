@@ -1043,3 +1043,43 @@ body,
     font-size: 12px;
     cursor: pointer;
 }
+
+/* Фиксированный контейнер для видео в сообщениях */
+.message-media video {
+    max-width: 260px;
+    max-height: 200px;
+    width: auto;
+    height: auto;
+    border-radius: 12px;
+    background-color: #000; /* чёрный фон на время загрузки */
+}
+
+/* Индикатор загрузки видео (показывается, пока видео не загрузилось) */
+.message-media video:not([src])::before,
+.message-media video:not([src]) {
+    content: '';
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Спиннер (если нужно отдельно) */
+.video-loading {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 10px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
