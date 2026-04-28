@@ -40,11 +40,13 @@ class AuthManager {
                 this.updateUI();
                 this.setupOnlineButton();
                 await this.showWelcomeWithUnreadCount();
+                window.dispatchEvent(new CustomEvent('authReady', { detail: { authenticated: true } }));
                 return true;
             } else {
                 this.clearStorage();
             }
         }
+        window.dispatchEvent(new CustomEvent('authReady', { detail: { authenticated: false } }));
         this.redirectIfNeeded();
         return false;
     }
@@ -150,9 +152,7 @@ class AuthManager {
 
     updateUI() {
         const coinElement = document.getElementById('coinCount');
-        if (coinElement && this.currentUser) {
-            coinElement.textContent = this.currentUser.coins;
-        }
+        if (coinElement && this.currentUser) coinElement.textContent = this.currentUser.coins;
     }
 
     clearStorage() {
@@ -164,13 +164,8 @@ class AuthManager {
 
     redirectIfNeeded() {
         const currentPage = window.location.pathname;
-        const isAuthPage = currentPage.includes('login.html') ||
-            currentPage.includes('register.html') ||
-            currentPage.includes('index.html');
-        const isProtectedPage = currentPage.includes('feed.html') ||
-            currentPage.includes('profile.html') ||
-            currentPage.includes('messages.html') ||
-            currentPage.includes('leaderboard.html');
+        const isAuthPage = currentPage.includes('login.html') || currentPage.includes('register.html') || currentPage.includes('index.html');
+        const isProtectedPage = currentPage.includes('feed.html') || currentPage.includes('profile.html') || currentPage.includes('messages.html') || currentPage.includes('leaderboard.html');
         if (isProtectedPage && !this.isAuthenticated()) window.location.href = 'login.html';
         else if (isAuthPage && this.isAuthenticated()) window.location.href = 'feed.html';
     }
@@ -235,10 +230,7 @@ class AuthManager {
     }
 }
 
-// Единый глобальный экземпляр
-if (!window.authManager) {
-    window.authManager = new AuthManager();
-}
+if (!window.authManager) window.authManager = new AuthManager();
 const authManager = window.authManager;
 let authInitialized = false;
 
@@ -246,7 +238,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!authInitialized) {
         authInitialized = true;
         await authManager.init();
-        // После инициализации диспатчим событие, чтобы другие скрипты могли подписаться
-        window.dispatchEvent(new CustomEvent('authReady', { detail: { authenticated: authManager.isAuthenticated() } }));
     }
 });
