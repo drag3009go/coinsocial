@@ -433,89 +433,99 @@ class MessageManager {
         this.showToast(`Удалено ${toDelete.length - this.selectedMessages.size} сообщений`, 'success');
     }
 
+
+
     async sendMessage() {
-        const input = document.getElementById('messageInput');
-        const text = input.value.trim();
-        if ((!text || text === '') && this.attachedFiles.length === 0) return;
+    const input = document.getElementById('messageInput');
+    const text = input.value.trim();
+    if ((!text || text === '') && this.attachedFiles.length === 0) return;
 
-        const sendBtn = document.getElementById('sendMsgBtn');
-        sendBtn.disabled = true;
+    const sendBtn = document.getElementById('sendMsgBtn');
+    sendBtn.disabled = true;
 
-        // Загрузка файлов
-        let mediaUrls = [];
-        for (const file of this.attachedFiles) {
-            const formData = new FormData();
-            formData.append('file', file);
-            try {
-                const res = await fetch(`${API_BASE}/upload/media`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${authManager.token}` },
-                    body: formData
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    mediaUrls.push(data.media_url);
-                } else {
-                    throw new Error('Upload failed');
-                }
-            } catch (err) {
-                console.error(err);
-                this.showToast('Ошибка загрузки медиа', 'error');
-                sendBtn.disabled = false;
-                return;
-            }
-        }
-
-        // Временное сообщение
-        const tempId = 'temp_' + Date.now() + '_' + Math.random();
-        const currentUser = authManager.getCurrentUser();
-        const tempMsg = {
-            id: tempId,
-            sender_id: currentUser.id,
-            content: text,
-            media_urls: mediaUrls,
-            timestamp: new Date().toISOString(),
-            is_temp: true
-        };
-        this.messages.push(tempMsg);
-        this.renderMessages();
-        this.scrollToBottom();
-
-        input.value = '';
-        this.attachedFiles = [];
-        this.renderMediaPreview();
-
+    // --- Загружаем файлы и получаем URL ---
+    let mediaUrls = [];
+    for (const file of this.attachedFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
         try {
-            const res = await fetch(`${API_BASE}/messages/send`, {
+            const res = await fetch(`${API_BASE}/upload/media`, {
                 method: 'POST',
-                headers: authManager.getAuthHeaders(),
-                body: JSON.stringify({
-                    receiver_id: this.currentConversation,
-                    content: text,
-                    media_urls: mediaUrls
-                })
+                headers: { 'Authorization': `Bearer ${authManager.token}` },
+                body: formData
             });
             if (res.ok) {
-                this.messages = this.messages.filter(m => m.id !== tempId);
-                await this.loadMessages(this.currentConversation);
-                this.scrollToBottom();
+                const data = await res.json();
+                // Ожидаем, что сервер вернёт { "media_url": "...", "media_type": "..." }
+                if (data.media_url) {
+                    mediaUrls.push(data.media_url);
+                } else {
+                    console.error('Не получен media_url от сервера', data);
+                }
             } else {
-                throw new Error('Send failed');
+                throw new Error('Upload failed');
             }
         } catch (err) {
             console.error(err);
-            const idx = this.messages.findIndex(m => m.id === tempId);
-            if (idx !== -1) {
-                this.messages[idx].error = true;
-                this.messages[idx].is_temp = false;
-                this.renderMessages();
-            }
-        } finally {
+            this.showToast('Ошибка загрузки медиа', 'error');
             sendBtn.disabled = false;
-            document.getElementById('messageInput').focus();
+            return;
         }
     }
 
+    // --- Временное сообщение (оптимистичное) ---
+    const tempId = 'temp_' + Date.now() + '_' + Math.random();
+    const currentUser = authManager.getCurrentUser();
+    const tempMsg = {
+        id: tempId,
+        sender_id: currentUser.id,
+        content: text,
+        media_urls: mediaUrls,          // ← массив URL
+        timestamp: new Date().toISOString(),
+        is_temp: true
+    };
+    this.messages.push(tempMsg);
+    this.renderMessages();
+    this.scrollToBottom();
+
+    // Очищаем форму
+    input.value = '';
+    this.attachedFiles = [];
+    this.renderMediaPreview();
+
+    // --- Отправка сообщения на сервер ---
+    try {
+        const res = await fetch(`${API_BASE}/messages/send`, {
+            method: 'POST',
+            headers: authManager.getAuthHeaders(),
+            body: JSON.stringify({
+                receiver_id: this.currentConversation,
+                content: text,
+                media_urls: mediaUrls        // ← обязательно поле с таким именем
+            })
+        });
+        if (res.ok) {
+            this.messages = this.messages.filter(m => m.id !== tempId);
+            await this.loadMessages(this.currentConversation);
+            this.scrollToBottom();
+        } else {
+            throw new Error('Send failed');
+        }
+    } catch (err) {
+        console.error(err);
+        const idx = this.messages.findIndex(m => m.id === tempId);
+        if (idx !== -1) {
+            this.messages[idx].error = true;
+            this.messages[idx].is_temp = false;
+            this.renderMessages();
+        }
+    } finally {
+        sendBtn.disabled = false;
+        document.getElementById('messageInput').focus();
+    }
+}
+
+    
     async editMessage(msgId, newContent) {
         const originalMsg = this.messages.find(m => m.id === msgId);
         if (!originalMsg) return;
