@@ -519,11 +519,9 @@ async def get_messages(user_id: str, current_user: dict = Depends(get_current_us
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT m.*, u.username as sender_username
-        FROM messages m
-        JOIN users u ON m.sender_id = u.id
-        WHERE (m.sender_id = %s AND m.receiver_id = %s) OR (m.sender_id = %s AND m.receiver_id = %s)
-        ORDER BY m.timestamp ASC
+        SELECT * FROM messages
+        WHERE (sender_id = %s AND receiver_id = %s) OR (sender_id = %s AND receiver_id = %s)
+        ORDER BY timestamp ASC
     ''', (current_user["id"], user_id, user_id, current_user["id"]))
     messages = cursor.fetchall()
     cursor.execute('''
@@ -532,15 +530,24 @@ async def get_messages(user_id: str, current_user: dict = Depends(get_current_us
     ''', (user_id, current_user["id"]))
     conn.commit()
     conn.close()
-    return [dict(msg) for msg in messages]
+    result = []
+    for msg in messages:
+        d = dict(msg)
+        if 'media_urls' in d and d['media_urls']:
+            d['media_urls'] = json.loads(d['media_urls'])
+        else:
+            d['media_urls'] = []
+        result.append(d)
+    return result
     
 
 @app.post("/messages/send")
 async def send_message(message_data: dict, current_user: dict = Depends(get_current_user)):
     receiver_id = message_data.get("receiver_id")
-    content = message_data.get("content")
-    if not receiver_id or not content:
-        raise HTTPException(400, "receiver_id and content required")
+    content = message_data.get("content", "")
+    media_urls = message_data.get("media_urls", [])
+    if not receiver_id:
+        raise HTTPException(400, "receiver_id required")
     msg_id = str(uuid.uuid4())
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -549,12 +556,12 @@ async def send_message(message_data: dict, current_user: dict = Depends(get_curr
         conn.close()
         raise HTTPException(404, "Receiver not found")
     try:
-        cursor.execute('''
-            INSERT INTO messages (id, sender_id, receiver_id, content, timestamp, is_read)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (msg_id, current_user["id"], receiver_id, content, datetime.now().isoformat(), False))
+        cursor.execute(
+            "INSERT INTO messages (id, sender_id, receiver_id, content, media_urls, timestamp, is_read) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (msg_id, current_user["id"], receiver_id, content, json.dumps(media_urls), datetime.now().isoformat(), False)
+        )
         conn.commit()
-        # Отправляем push-уведомление получателю
+        # Отправляем push-уведомление получателю (если нужно)
         await send_push_notification(receiver_id, "Новое сообщение", f"От {current_user['username']}: {content[:50]}", "/messages.html")
     except Exception as e:
         conn.close()
