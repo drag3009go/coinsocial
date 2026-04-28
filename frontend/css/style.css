@@ -576,7 +576,7 @@ body,
     100% { transform: rotate(360deg); }
 }
 
-/* ===== Сообщения (растягивающаяся страница, без фиксации высоты) ===== */
+/* ===== СООБЩЕНИЯ (ЧАТ) – ГЛАВНЫЕ ИСПРАВЛЕНИЯ ===== */
 .messages-container {
     display: flex;
     gap: 0;
@@ -652,7 +652,6 @@ body,
     flex: 1;
     display: flex;
     flex-direction: column;
-    /* Высота не задана – растягивается по содержимому */
 }
 
 .chat-header {
@@ -674,21 +673,24 @@ body,
     display: flex;
     flex-direction: column;
     gap: 12px;
-    /* Нет overflow-y: auto – страница растягивается */
 }
 
+/* Стили сообщений – перенос текста, отступы, чтобы не наезжало на меню */
 .message {
-    max-width: 70%;
+    max-width: 75%;
     padding: 10px 14px;
     border-radius: 20px;
-    word-wrap: break-word;
     position: relative;
     display: flex;
-    align-items: flex-start;
+    flex-direction: column;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
 }
 
 .message-check {
     margin-right: 8px;
+    align-self: center;
 }
 
 .message.sent {
@@ -712,14 +714,16 @@ body,
 
 .message-content {
     font-size: 14px;
-    flex: 1;
+    word-break: break-word;   /* перенос длинных слов без пробелов */
+    white-space: normal;
+    margin-bottom: 4px;
 }
 
 .message-meta {
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     margin-top: 4px;
 }
 
@@ -734,16 +738,16 @@ body,
     cursor: pointer;
     font-size: 16px;
     line-height: 1;
-    margin-left: 8px;
     opacity: 0.6;
     transition: 0.2s;
+    padding: 0 4px;
 }
 
 .message-menu-btn:hover {
     opacity: 1;
 }
 
-/* Кастомное меню (⋮) */
+/* Кастомное меню (три точки) */
 .custom-message-menu {
     position: absolute;
     background: white;
@@ -780,7 +784,7 @@ body,
     margin-top: 4px;
 }
 
-/* Кнопки действий с сообщениями */
+/* Кнопки действий */
 .btn-small {
     padding: 4px 8px;
     font-size: 12px;
@@ -789,7 +793,6 @@ body,
     border: none;
     cursor: pointer;
 }
-
 .btn-small.danger {
     background: #ef4444;
     color: white;
@@ -822,7 +825,6 @@ body,
     align-items: center;
     justify-content: center;
 }
-
 .scroll-btn:hover {
     opacity: 1;
     transform: scale(1.05);
@@ -877,12 +879,11 @@ body,
     object-fit: contain;
 }
 
-/* ===== Кнопка канала MAX (на главной) ===== */
+/* ===== Кнопка канала MAX ===== */
 .max-channel {
     text-align: center;
     margin: 40px 0;
 }
-
 .max-channel-btn {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
@@ -893,7 +894,6 @@ body,
     transition: 0.2s;
     font-weight: bold;
 }
-
 .max-channel-btn:hover {
     transform: scale(1.02);
     opacity: 0.9;
@@ -948,61 +948,24 @@ body,
         height: 40px;
         font-size: 20px;
     }
-
-    /* ===== Сообщения – правильный перенос и ширина ===== */
-.message {
-    max-width: 70%;
-    padding: 10px 14px;
-    border-radius: 20px;
-    word-wrap: break-word;
-    white-space: pre-wrap;       /* переносит текст на новую строку */
-    overflow-wrap: break-word;
-    position: relative;
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
+    .chat-input-form {
+        padding: 12px;
+    }
 }
 
-.message-content {
-    font-size: 14px;
-    flex: 1;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-}
-
-/* Кнопка отправки – правильная блокировка */
-.send-button {
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    flex-shrink: 0;
-    background-color: #667eea;
-    border: none;
-    cursor: pointer;
-    color: white;
-    transition: 0.2s;
-}
-.send-button:hover:not(:disabled) {
-    background-color: #5a67d8;
-}
-.send-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* Поле ввода сообщения */
-.chat-input-form {
-    display: flex;
-    gap: 12px;
-    align-items: center;
+/* ===== Дополнительные исправления для кнопки отправки и поля ввода ===== */
+.chat-input-area {
     padding: 16px;
     border-top: 1px solid rgba(0,0,0,0.05);
+    background: rgba(255,255,255,0.5);
 }
+
+.chat-input-form {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
 .chat-input-form .form-input {
     flex: 1;
     background-color: white;
@@ -1012,51 +975,6 @@ body,
     font-size: 15px;
 }
 
-    /* Сообщения – корректный перенос, отступы, чтобы текст не налезал на меню */
-.message {
-    max-width: 75%;
-    padding: 10px 14px;
-    border-radius: 20px;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    white-space: normal;
-}
-
-.message-content {
-    font-size: 14px;
-    word-break: break-word;   /* принудительный перенос длинных слов без пробелов */
-    white-space: normal;
-    margin-bottom: 4px;       /* отступ перед метаданными */
-}
-
-.message-meta {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 8px;
-    margin-top: 4px;
-}
-
-.message-time {
-    font-size: 10px;
-    opacity: 0.7;
-}
-
-.message-menu-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 16px;
-    line-height: 1;
-    opacity: 0.6;
-    transition: 0.2s;
-    padding: 0 4px;
-}
-
-/* Кнопка отправки – фиксированная, не сжимается */
 .send-button {
     width: 40px;
     height: 40px;
@@ -1073,27 +991,12 @@ body,
     color: white;
     transition: 0.2s;
 }
+
 .send-button:hover:not(:disabled) {
     background-color: #5a67d8;
 }
+
 .send-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-/* Поле ввода – чтобы не "сиротело" */
-.chat-input-form {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    padding: 8px;
-}
-.chat-input-form .form-input {
-    flex: 1;
-    background-color: white;
-    border: 1px solid rgba(0,0,0,0.1);
-    border-radius: 40px;
-    padding: 12px 16px;
-    font-size: 15px;
-}
 }
