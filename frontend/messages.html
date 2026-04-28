@@ -8,7 +8,6 @@
 </head>
 <body>
     <div class="container">
-        <!-- Шапка -->
         <div class="header">
             <div class="logo">
                 <a href="index.html" style="text-decoration: none; color: inherit;">
@@ -31,9 +30,7 @@
             </div>
         </div>
 
-        <!-- Контейнер сообщений -->
         <div class="messages-container">
-            <!-- Боковая панель -->
             <div class="conversations-sidebar">
                 <div class="conversations-header">
                     <h3>💬 Сообщения</h3>
@@ -45,12 +42,11 @@
                 <div class="conversations-list" id="conversationsList"></div>
             </div>
 
-            <!-- Область чата (растягивается, без фиксированной высоты) -->
             <div class="chat-area">
                 <div class="chat-header" id="chatHeader">
-    <div>Выберите диалог</div>
-        </div>
-        <div class="chat-messages" id="chatMessages"></div>
+                    <div>Выберите диалог</div>
+                </div>
+                <div class="chat-messages" id="chatMessages"></div>
                 <div class="chat-input-area">
                     <div class="chat-input-form">
                         <input type="text" id="messageInput" class="form-input" placeholder="Введите сообщение..." disabled>
@@ -61,13 +57,11 @@
         </div>
     </div>
 
-    <!-- Плавающие кнопки прокрутки -->
     <div class="scroll-buttons">
         <button id="scrollUpBtn" class="scroll-btn" style="display: none;" title="Вверх">↑</button>
         <button id="scrollDownBtn" class="scroll-btn" style="display: none;" title="Вниз">↓</button>
     </div>
 
-    <!-- Модалка для аватара -->
     <div id="avatarModal" class="modal" style="display: none;">
         <div class="modal-content">
             <span class="close-modal" id="closeAvatarModal">&times;</span>
@@ -78,19 +72,17 @@
     <script src="js/auth.js"></script>
     <script src="js/messages.js"></script>
     <script>
-        // Дополнительный контроль поля ввода (для совместимости)
-        // new versiom
         setInterval(() => {
-            const messageInput = document.getElementById('messageInput');
-            const sendButton = document.getElementById('sendMsgBtn');
+            const msgInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendMsgBtn');
             if (messageManager && messageManager.currentConversation) {
-                messageInput.disabled = false;
-                sendButton.disabled = false;
-                messageInput.placeholder = "Введите сообщение...";
+                msgInput.disabled = false;
+                sendBtn.disabled = false;
+                msgInput.placeholder = "Введите сообщение...";
             } else {
-                messageInput.disabled = true;
-                sendButton.disabled = true;
-                messageInput.placeholder = "Выберите диалог для общения";
+                msgInput.disabled = true;
+                sendBtn.disabled = true;
+                msgInput.placeholder = "Выберите диалог для общения";
             }
         }, 500);
     </script>
