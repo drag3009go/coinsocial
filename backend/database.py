@@ -90,13 +90,14 @@ def init_db():
         )
     ''')
 
-    # messages
+    # messages - добавлено поле media_urls JSONB
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
             sender_id TEXT NOT NULL,
             receiver_id TEXT NOT NULL,
             content TEXT NOT NULL,
+            media_urls JSONB DEFAULT '[]'::jsonb,
             timestamp TIMESTAMP NOT NULL,
             is_read BOOLEAN DEFAULT FALSE,
             FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE CASCADE,
@@ -119,7 +120,7 @@ def init_db():
         )
     ''')
 
-    # push_subscriptions (добавлено)
+    # push_subscriptions
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS push_subscriptions (
             user_id TEXT PRIMARY KEY,
