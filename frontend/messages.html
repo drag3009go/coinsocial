@@ -34,23 +34,30 @@
             <div class="conversations-sidebar">
                 <div class="conversations-header">
                     <h3>💬 Сообщения</h3>
-                    <input type="text" id="userSearch" class="form-input" placeholder="Поиск пользователей..."
-                           style="margin-top: 10px;">
-                    <button id="toggleUsersBtn" class="btn btn-secondary btn-small" style="margin-top: 5px;">👥 Все пользователи</button>
+                    <input type="text" id="userSearch" class="form-input" placeholder="Поиск пользователей...">
+                    <button id="toggleUsersBtn" class="btn btn-secondary btn-small">👥 Все пользователи</button>
                 </div>
                 <div id="searchResults"></div>
                 <div class="conversations-list" id="conversationsList"></div>
             </div>
 
-<div class="chat-input-area">
-    <div class="chat-input-form">
-        <button id="attachMediaBtn" class="attach-button" title="Прикрепить медиа">📎</button>
-        <input type="file" id="mediaInput" accept="image/*,video/*" multiple style="display: none;">
-        <input type="text" id="messageInput" class="form-input" placeholder="Введите сообщение..." disabled>
-        <button id="sendMsgBtn" class="btn btn-primary send-button" disabled>📨</button>
+            <div class="chat-area">
+                <div class="chat-header" id="chatHeader">
+                    <div>Выберите диалог</div>
+                </div>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-area">
+                    <div class="chat-input-form">
+                        <button id="attachMediaBtn" class="attach-button" title="Прикрепить медиа">📎</button>
+                        <input type="file" id="mediaInput" accept="image/*,video/*" multiple style="display: none;">
+                        <input type="text" id="messageInput" class="form-input" placeholder="Введите сообщение..." disabled>
+                        <button id="sendMsgBtn" class="btn btn-primary send-button" disabled>📨</button>
+                    </div>
+                    <div id="mediaPreviewList" class="media-preview-list"></div>
+                </div>
+            </div>
+        </div>
     </div>
-    <div id="mediaPreviewList" class="media-preview-list"></div>
-</div>
 
     <div class="scroll-buttons">
         <button id="scrollUpBtn" class="scroll-btn" style="display: none;" title="Вверх">↑</button>
