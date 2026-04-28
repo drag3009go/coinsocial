@@ -11,6 +11,7 @@ class MessageManager {
         this.isSending = false;
         this.selectionMode = false;
         this.selectedMessages = new Set();
+        this.attachedFiles = [];
     }
 
     async init() {
@@ -25,6 +26,7 @@ class MessageManager {
     async _init() {
         await this.loadConversations();
         this.setupEventListeners();
+        this.setupMediaAttach();
         this.startAutoRefresh();
         this.startNotificationChecker();
         this.setupScrollButtons();
@@ -51,6 +53,112 @@ class MessageManager {
         scrollUp.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
         scrollDown.onclick = () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
         checkScroll();
+    }
+
+    setupMediaAttach() {
+        const attachBtn = document.getElementById('attachMediaBtn');
+        const mediaInput = document.getElementById('mediaInput');
+        if (!attachBtn || !mediaInput) return;
+        attachBtn.onclick = () => mediaInput.click();
+        mediaInput.onchange = async (e) => {
+            const files = Array.from(e.target.files);
+            if (this.attachedFiles.length + files.length > 3) {
+                alert('Можно прикрепить не более 3 файлов');
+                return;
+            }
+            for (const file of files) {
+                if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+                    alert('Можно прикреплять только изображения и видео');
+                    continue;
+                }
+                if (file.type.startsWith('video/')) {
+                    const duration = await this.getVideoDuration(file);
+                    if (duration > 60) {
+                        alert('Видео не должно превышать 60 секунд');
+                        continue;
+                    }
+                }
+                const processed = await this.compressFile(file);
+                this.attachedFiles.push(processed);
+            }
+            this.renderMediaPreview();
+            mediaInput.value = '';
+        };
+    }
+
+    getVideoDuration(file) {
+        return new Promise((resolve) => {
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            video.onloadedmetadata = () => {
+                window.URL.revokeObjectURL(video.src);
+                resolve(video.duration);
+            };
+            video.src = URL.createObjectURL(file);
+        });
+    }
+
+    compressFile(file) {
+        return new Promise((resolve) => {
+            if (!file.type.startsWith('image/')) {
+                resolve(file);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    const maxSize = 1200;
+                    if (width > maxSize || height > maxSize) {
+                        if (width > height) {
+                            height = (height * maxSize) / width;
+                            width = maxSize;
+                        } else {
+                            width = (width * maxSize) / height;
+                            height = maxSize;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    canvas.toBlob((blob) => {
+                        resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+                    }, 'image/jpeg', 0.8);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    renderMediaPreview() {
+        const container = document.getElementById('mediaPreviewList');
+        if (!container) return;
+        if (this.attachedFiles.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = this.attachedFiles.map((file, index) => {
+            const url = URL.createObjectURL(file);
+            const isVideo = file.type.startsWith('video/');
+            return `
+                <div class="media-preview-item" data-index="${index}">
+                    ${isVideo ? `<video src="${url}" muted></video>` : `<img src="${url}" alt="preview">`}
+                    <button class="remove-media" data-index="${index}">✖</button>
+                </div>
+            `;
+        }).join('');
+        document.querySelectorAll('.remove-media').forEach(btn => {
+            btn.onclick = (e) => {
+                const idx = parseInt(btn.dataset.index);
+                this.attachedFiles.splice(idx, 1);
+                this.renderMediaPreview();
+            };
+        });
     }
 
     setupEventListeners() {
@@ -188,10 +296,23 @@ class MessageManager {
             const error = msg.error ? '<div class="error-badge">⚠️ Ошибка</div>' : '';
             const check = this.selectionMode ? `<input type="checkbox" class="msg-checkbox" data-id="${msg.id}" ${this.selectedMessages.has(msg.id) ? 'checked' : ''}>` : '';
             const menuBtn = (isMy && !msg.is_temp && !this.selectionMode) ? `<button class="message-menu-btn" data-id="${msg.id}" data-content="${escapeHtml(msg.content)}">⋮</button>` : '';
+
+            let mediaHtml = '';
+            if (msg.media_urls && msg.media_urls.length) {
+                mediaHtml = `<div class="message-media">${msg.media_urls.map(url => {
+                    if (url.match(/\.(mp4|webm|ogg)/i)) {
+                        return `<video src="${url}" controls class="msg-media-video"></video>`;
+                    } else {
+                        return `<img src="${url}" class="msg-media-img" loading="lazy">`;
+                    }
+                }).join('')}</div>`;
+            }
+
             return `
                 <div class="message ${isMy ? 'sent' : 'received'} ${msg.error ? 'error' : ''}" data-msg-id="${msg.id}">
                     <div class="message-check">${check}</div>
                     <div class="message-content">${escapeHtml(msg.content)}</div>
+                    ${mediaHtml}
                     <div class="message-meta">
                         <span class="message-time">${this.formatTimeYakutsk(msg.timestamp)}</span>
                         ${menuBtn}
@@ -314,42 +435,75 @@ class MessageManager {
 
     async sendMessage() {
         const input = document.getElementById('messageInput');
-        const content = input.value.trim();
-        if (!content || !this.currentConversation) return;
+        const text = input.value.trim();
+        if ((!text || text === '') && this.attachedFiles.length === 0) return;
 
+        const sendBtn = document.getElementById('sendMsgBtn');
+        sendBtn.disabled = true;
+
+        // Загрузка файлов
+        let mediaUrls = [];
+        for (const file of this.attachedFiles) {
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const res = await fetch(`${API_BASE}/upload/media`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authManager.token}` },
+                    body: formData
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    mediaUrls.push(data.media_url);
+                } else {
+                    throw new Error('Upload failed');
+                }
+            } catch (err) {
+                console.error(err);
+                this.showToast('Ошибка загрузки медиа', 'error');
+                sendBtn.disabled = false;
+                return;
+            }
+        }
+
+        // Временное сообщение
         const tempId = 'temp_' + Date.now() + '_' + Math.random();
         const currentUser = authManager.getCurrentUser();
-        this.messages.push({
+        const tempMsg = {
             id: tempId,
             sender_id: currentUser.id,
-            content,
+            content: text,
+            media_urls: mediaUrls,
             timestamp: new Date().toISOString(),
             is_temp: true
-        });
+        };
+        this.messages.push(tempMsg);
         this.renderMessages();
         this.scrollToBottom();
-        input.value = '';
-        this.sendQueue.push({ content, tempId, receiverId: this.currentConversation });
-        this.processQueue();
-    }
 
-    async processQueue() {
-        if (this.isSending) return;
-        if (!this.sendQueue.length) return;
-        this.isSending = true;
-        const { content, tempId, receiverId } = this.sendQueue.shift();
+        input.value = '';
+        this.attachedFiles = [];
+        this.renderMediaPreview();
+
         try {
             const res = await fetch(`${API_BASE}/messages/send`, {
                 method: 'POST',
                 headers: authManager.getAuthHeaders(),
-                body: JSON.stringify({ receiver_id: receiverId, content })
+                body: JSON.stringify({
+                    receiver_id: this.currentConversation,
+                    content: text,
+                    media_urls: mediaUrls
+                })
             });
             if (res.ok) {
                 this.messages = this.messages.filter(m => m.id !== tempId);
                 await this.loadMessages(this.currentConversation);
                 this.scrollToBottom();
-            } else throw new Error();
-        } catch {
+            } else {
+                throw new Error('Send failed');
+            }
+        } catch (err) {
+            console.error(err);
             const idx = this.messages.findIndex(m => m.id === tempId);
             if (idx !== -1) {
                 this.messages[idx].error = true;
@@ -357,8 +511,8 @@ class MessageManager {
                 this.renderMessages();
             }
         } finally {
-            this.isSending = false;
-            this.processQueue();
+            sendBtn.disabled = false;
+            document.getElementById('messageInput').focus();
         }
     }
 
