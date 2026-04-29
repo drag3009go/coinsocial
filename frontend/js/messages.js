@@ -487,93 +487,102 @@ class MessageManager {
         });
     }
 
+
+
     async sendMessage() {
-        const input = document.getElementById('messageInput');
-        const text = input.value.trim();
-        if ((!text || text === '') && this.attachedFiles.length === 0) return;
+    const input = document.getElementById('messageInput');
+    const text = input.value.trim();
+    if ((!text || text === '') && this.attachedFiles.length === 0) return;
 
-        const tempId = 'temp_' + Date.now() + '_' + Math.random();
-        const currentUser = authManager.getCurrentUser();
-        const tempMsg = {
-            id: tempId,
-            sender_id: currentUser.id,
-            content: text,
-            media_urls: [],
-            timestamp: new Date().toISOString(),
-            is_temp: true,
-            error: false
-        };
-        this.messages.push(tempMsg);
-        this.renderMessages();
-        this.scrollToBottom();
-        input.value = '';
-        const attached = [...this.attachedFiles];
-        this.attachedFiles = [];
-        this.renderMediaPreview();
+    const tempId = 'temp_' + Date.now() + '_' + Math.random();
+    const currentUser = authManager.getCurrentUser();
+    const tempMsg = {
+        id: tempId,
+        sender_id: currentUser.id,
+        content: text,
+        media_urls: [],
+        timestamp: new Date().toISOString(),
+        is_temp: true,
+        error: false
+    };
+    this.messages.push(tempMsg);
+    this.renderMessages();
+    this.scrollToBottom();
+    input.value = '';
+    const attached = [...this.attachedFiles];
+    this.attachedFiles = [];
+    this.renderMediaPreview();
 
-        let mediaUrls = [];
-        for (const file of attached) {
-            const formData = new FormData();
-            formData.append('file', file);
-            try {
-                const res = await fetch(`${API_BASE}/upload/media`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${authManager.token}` },
-                    body: formData
-                });
-                if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-                const data = await res.json();
-                if (data.media_url) mediaUrls.push(data.media_url);
-                else throw new Error('No media_url in response');
-            } catch (err) {
-                console.error(err);
-                this.showToast('Ошибка загрузки медиа', 'error');
-                const idx = this.messages.findIndex(m => m.id === tempId);
-                if (idx !== -1) {
-                    this.messages[idx].error = true;
-                    this.messages[idx].is_temp = false;
-                    this.renderMessages();
-                }
-                return;
-            }
-        }
-
-        const idx = this.messages.findIndex(m => m.id === tempId);
-        if (idx !== -1) {
-            this.messages[idx].media_urls = mediaUrls;
-            this.messages[idx].is_temp = false;
-            this.renderMessages();
-        }
-
+    let mediaUrls = [];
+    for (const file of attached) {
+        const formData = new FormData();
+        formData.append('file', file);
         try {
-            const res = await fetch(`${API_BASE}/messages/send`, {
+            const res = await fetch(`${API_BASE}/upload/media`, {
                 method: 'POST',
-                headers: authManager.getAuthHeaders(),
-                body: JSON.stringify({
-                    receiver_id: this.currentConversation,
-                    content: text,
-                    media_urls: mediaUrls
-                })
+                headers: { 'Authorization': `Bearer ${authManager.token}` },
+                body: formData
             });
-            if (res.ok) {
-                const data = await res.json();
-                if (idx !== -1) this.messages[idx].id = data.id;
-                this.renderMessages();
-                this.loadConversations(); // обновляем список диалогов, чтобы обновить счётчики
-            } else {
-                throw new Error('Send failed');
-            }
+            if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+            const data = await res.json();
+            if (data.media_url) mediaUrls.push(data.media_url);
+            else throw new Error('No media_url in response');
         } catch (err) {
             console.error(err);
+            this.showToast('Ошибка загрузки медиа', 'error');
+            const idx = this.messages.findIndex(m => m.id === tempId);
             if (idx !== -1) {
                 this.messages[idx].error = true;
                 this.messages[idx].is_temp = false;
                 this.renderMessages();
             }
-            this.showToast('Не удалось отправить сообщение', 'error');
+            return;
         }
     }
 
+    const idx = this.messages.findIndex(m => m.id === tempId);
+    if (idx !== -1) {
+        this.messages[idx].media_urls = mediaUrls;
+        this.messages[idx].is_temp = false;
+        this.renderMessages();
+    } else {
+        console.warn('Temporary message not found before sending, but continuing');
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/messages/send`, {
+            method: 'POST',
+            headers: authManager.getAuthHeaders(),
+            body: JSON.stringify({
+                receiver_id: this.currentConversation,
+                content: text,
+                media_urls: mediaUrls
+            })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (idx !== -1) {
+                this.messages[idx].id = data.id;
+                this.renderMessages();
+            } else {
+                // Если временное сообщение пропало, просто перезагрузим переписку
+                await this.loadMessages(this.currentConversation);
+            }
+            this.loadConversations();
+        } else {
+            throw new Error('Send failed');
+        }
+    } catch (err) {
+        console.error(err);
+        if (idx !== -1) {
+            this.messages[idx].error = true;
+            this.messages[idx].is_temp = false;
+            this.renderMessages();
+        }
+        this.showToast('Не удалось отправить сообщение', 'error');
+    }
+}
+    
     async deleteSelectedMessages() {
         const toDelete = Array.from(this.selectedMessages);
         if (!toDelete.length) return;
