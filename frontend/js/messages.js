@@ -7,8 +7,6 @@ class MessageManager {
         this.notificationInterval = null;
         this.showAllUsers = false;
         this.lastUnreadCount = 0;
-        this.sendQueue = [];
-        this.isSending = false;
         this.selectionMode = false;
         this.selectedMessages = new Set();
         this.attachedFiles = [];
@@ -71,7 +69,6 @@ class MessageManager {
                     continue;
                 }
                 if (file.type.startsWith('video/')) {
-                    // ограничение размера 60 МБ
                     if (file.size > 60 * 1024 * 1024) {
                         this.showToast('Видео не должно превышать 60 МБ', 'error');
                         continue;
@@ -348,9 +345,8 @@ class MessageManager {
                     return '';
                 }).join('') + '</div>';
             }
-            const sending = msg.is_temp ? '<div class="sending">⏳ Отправка...</div>' : '';
+            const sending = msg.is_temp && !msg.error ? '<div class="sending">⏳ Отправка...</div>' : '';
             const error = msg.error ? '<div class="error-badge">⚠️ Ошибка</div>' : '';
-            // Чекбокс только для своих сообщений и только в режиме выбора
             const check = (this.selectionMode && isMy) ? `<input type="checkbox" class="msg-checkbox" data-id="${msg.id}" ${this.selectedMessages.has(msg.id) ? 'checked' : ''}>` : '';
             const menuBtn = (isMy && !msg.is_temp && !this.selectionMode) ? `<button class="message-menu-btn" data-id="${msg.id}" data-content="${escapeHtml(msg.content)}">⋮</button>` : '';
 
@@ -388,7 +384,7 @@ class MessageManager {
             });
         }
 
-        // Обработчики видео
+        // Обработчики видео для паузы автообновления
         document.querySelectorAll('.msg-media-video').forEach(video => {
             const wrapper = video.closest('.video-wrapper');
             const loader = wrapper?.querySelector('.video-loading');
@@ -433,12 +429,11 @@ class MessageManager {
         }
         const close = () => menu.remove();
         document.getElementById('menuEditBtn')?.addEventListener('click', () => {
-            const newContent = prompt('Введите новый текст:', currentContent);
-            if (newContent && newContent !== currentContent) this.editMessage(msgId, newContent);
+            this.optimisticEditMessage(msgId, currentContent);
             close();
         });
         document.getElementById('menuDeleteBtn')?.addEventListener('click', () => {
-            if (confirm('Удалить сообщение?')) this.deleteMessage(msgId);
+            this.optimisticDeleteMessage(msgId);
             close();
         });
         setTimeout(() => {
@@ -452,47 +447,48 @@ class MessageManager {
         }, 0);
     }
 
-    scrollToBottom() {
-        const container = document.getElementById('chatMessages');
-        if (container) container.scrollTop = container.scrollHeight;
-    }
+    // ========== ОПТИМИСТИЧНЫЕ ОПЕРАЦИИ ==========
+    async optimisticEditMessage(msgId, oldContent) {
+        const msg = this.messages.find(m => m.id === msgId);
+        if (!msg) return;
+        const originalContent = msg.content;
+        const newContent = prompt('Введите новый текст:', originalContent);
+        if (!newContent || newContent === originalContent) return;
 
-    toggleSelectionMode() {
-        this.selectionMode = !this.selectionMode;
-        if (!this.selectionMode) this.selectedMessages.clear();
-        this.updateChatHeader();
+        // Мгновенное обновление текста
+        msg.content = newContent;
         this.renderMessages();
-    }
 
-    exitSelectionMode() {
-        if (this.selectionMode) {
-            this.selectionMode = false;
-            this.selectedMessages.clear();
-            this.updateChatHeader();
+        try {
+            const res = await fetch(`${API_BASE}/messages/${msgId}`, {
+                method: 'PUT',
+                headers: authManager.getAuthHeaders(),
+                body: JSON.stringify({ content: newContent })
+            });
+            if (!res.ok) throw new Error();
+        } catch (err) {
+            // Откат при ошибке
+            msg.content = originalContent;
             this.renderMessages();
+            this.showToast('Не удалось изменить сообщение', 'error');
         }
     }
 
-    async deleteSelectedMessages() {
-        const toDelete = Array.from(this.selectedMessages);
-        if (!toDelete.length) return;
-        if (!confirm(`Удалить ${toDelete.length} сообщение(ий)?`)) return;
-        const delBtn = document.getElementById('deleteSelectedBtn');
-        if (delBtn) delBtn.disabled = true;
-        for (const msgId of toDelete) {
-            try {
-                const res = await fetch(`${API_BASE}/messages/${msgId}`, { method: 'DELETE', headers: authManager.getAuthHeaders() });
-                if (res.ok) {
-                    this.messages = this.messages.filter(m => m.id !== msgId);
-                    this.selectedMessages.delete(msgId);
-                    this.renderMessages();
-                }
-            } catch(e) { console.error(e); }
-            await new Promise(r => setTimeout(r, 200));
-        }
-        if (delBtn) delBtn.disabled = false;
-        if (this.selectedMessages.size === 0) this.toggleSelectionMode();
-        this.showToast(`Удалено ${toDelete.length - this.selectedMessages.size} сообщений`, 'success');
+    optimisticDeleteMessage(msgId) {
+        const idx = this.messages.findIndex(m => m.id === msgId);
+        if (idx === -1) return;
+        const removed = this.messages.splice(idx, 1)[0];
+        this.renderMessages();
+        // Асинхронное удаление на сервере
+        fetch(`${API_BASE}/messages/${msgId}`, {
+            method: 'DELETE',
+            headers: authManager.getAuthHeaders()
+        }).catch(err => {
+            // Возвращаем сообщение обратно при ошибке
+            this.messages.push(removed);
+            this.renderMessages();
+            this.showToast('Не удалось удалить сообщение', 'error');
+        });
     }
 
     async sendMessage() {
@@ -500,11 +496,30 @@ class MessageManager {
         const text = input.value.trim();
         if ((!text || text === '') && this.attachedFiles.length === 0) return;
 
-        const sendBtn = document.getElementById('sendMsgBtn');
-        sendBtn.disabled = true;
+        // Оптимистичное добавление временного сообщения
+        const tempId = 'temp_' + Date.now() + '_' + Math.random();
+        const currentUser = authManager.getCurrentUser();
+        const tempMsg = {
+            id: tempId,
+            sender_id: currentUser.id,
+            content: text,
+            media_urls: [],
+            timestamp: new Date().toISOString(),
+            is_temp: true,
+            error: false
+        };
+        this.messages.push(tempMsg);
+        this.renderMessages();
+        this.scrollToBottom();
+        input.value = '';
+        const attached = [...this.attachedFiles];
+        this.attachedFiles = [];
+        this.renderMediaPreview();
 
+        // Асинхронная загрузка файлов
         let mediaUrls = [];
-        for (const file of this.attachedFiles) {
+        let uploadSuccess = true;
+        for (const file of attached) {
             const formData = new FormData();
             formData.append('file', file);
             try {
@@ -513,40 +528,33 @@ class MessageManager {
                     headers: { 'Authorization': `Bearer ${authManager.token}` },
                     body: formData
                 });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.media_url) mediaUrls.push(data.media_url);
-                    else this.showToast('Сервер не вернул ссылку', 'error');
-                } else {
-                    this.showToast(`Ошибка загрузки: ${res.status}`, 'error');
-                    sendBtn.disabled = false;
-                    return;
-                }
-            } catch(err) {
+                if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+                const data = await res.json();
+                if (data.media_url) mediaUrls.push(data.media_url);
+                else throw new Error('No media_url in response');
+            } catch (err) {
                 console.error(err);
-                this.showToast('Ошибка сети при загрузке', 'error');
-                sendBtn.disabled = false;
+                uploadSuccess = false;
+                this.showToast('Ошибка загрузки медиа', 'error');
+                const idx = this.messages.findIndex(m => m.id === tempId);
+                if (idx !== -1) {
+                    this.messages[idx].error = true;
+                    this.messages[idx].is_temp = false;
+                    this.renderMessages();
+                }
                 return;
             }
         }
 
-        const tempId = 'temp_' + Date.now() + '_' + Math.random();
-        const currentUser = authManager.getCurrentUser();
-        const tempMsg = {
-            id: tempId,
-            sender_id: currentUser.id,
-            content: text,
-            media_urls: mediaUrls,
-            timestamp: new Date().toISOString(),
-            is_temp: true
-        };
-        this.messages.push(tempMsg);
+        // Обновляем временное сообщение: добавляем ссылки на файлы, убираем флаг временности
+        const idx = this.messages.findIndex(m => m.id === tempId);
+        if (idx !== -1) {
+            this.messages[idx].media_urls = mediaUrls;
+            this.messages[idx].is_temp = false;
+        }
         this.renderMessages();
-        this.scrollToBottom();
-        input.value = '';
-        this.attachedFiles = [];
-        this.renderMediaPreview();
 
+        // Отправка финального сообщения на сервер
         try {
             const res = await fetch(`${API_BASE}/messages/send`, {
                 method: 'POST',
@@ -558,71 +566,73 @@ class MessageManager {
                 })
             });
             if (res.ok) {
-                this.messages = this.messages.filter(m => m.id !== tempId);
+                const data = await res.json();
+                if (idx !== -1) this.messages[idx].id = data.id;
+                this.renderMessages();
+                // Дополнительно перезагрузим сообщения для синхронизации порядка
                 await this.loadMessages(this.currentConversation);
-                this.scrollToBottom();
             } else {
-                const errText = await res.text();
-                this.showToast(`Ошибка отправки: ${res.status} ${errText}`, 'error');
                 throw new Error('Send failed');
             }
-        } catch(err) {
+        } catch (err) {
             console.error(err);
-            const idx = this.messages.findIndex(m => m.id === tempId);
             if (idx !== -1) {
                 this.messages[idx].error = true;
                 this.messages[idx].is_temp = false;
                 this.renderMessages();
             }
             this.showToast('Не удалось отправить сообщение', 'error');
-        } finally {
-            sendBtn.disabled = false;
-            document.getElementById('messageInput').focus();
         }
     }
 
-    async editMessage(msgId, newContent) {
-        const originalMsg = this.messages.find(m => m.id === msgId);
-        if (!originalMsg) return;
-        const savedContent = originalMsg.content;
-        originalMsg.content = newContent;
+    async deleteSelectedMessages() {
+        const toDelete = Array.from(this.selectedMessages);
+        if (!toDelete.length) return;
+        if (!confirm(`Удалить ${toDelete.length} сообщение(ий)?`)) return;
+
+        // Оптимистичное удаление: убираем выбранные сообщения из списка
+        const removedMessages = [];
+        const newMessages = [];
+        for (const msg of this.messages) {
+            if (toDelete.includes(msg.id)) {
+                removedMessages.push(msg);
+            } else {
+                newMessages.push(msg);
+            }
+        }
+        this.messages = newMessages;
+        this.selectedMessages.clear();
         this.renderMessages();
-        try {
-            const res = await fetch(`${API_BASE}/messages/${msgId}`, {
-                method: 'PUT',
-                headers: authManager.getAuthHeaders(),
-                body: JSON.stringify({ content: newContent })
+        this.exitSelectionMode();
+
+        // Асинхронное удаление на сервере по одному
+        for (const msgId of toDelete) {
+            fetch(`${API_BASE}/messages/${msgId}`, {
+                method: 'DELETE',
+                headers: authManager.getAuthHeaders()
+            }).catch(err => {
+                console.error(`Failed to delete ${msgId}:`, err);
+                const originalMsg = removedMessages.find(m => m.id === msgId);
+                if (originalMsg && !this.messages.some(m => m.id === msgId)) {
+                    this.messages.push(originalMsg);
+                    this.renderMessages();
+                    this.showToast(`Не удалось удалить одно из сообщений`, 'error');
+                }
             });
-            if (!res.ok) throw new Error();
-        } catch {
-            originalMsg.content = savedContent;
-            this.renderMessages();
-            this.showToast('Не удалось изменить сообщение', 'error');
         }
+        this.showToast(`Удаление выполняется...`, 'info');
     }
 
-    async deleteMessage(msgId) {
-        const idx = this.messages.findIndex(m => m.id === msgId);
-        if (idx === -1) return;
-        const [removed] = this.messages.splice(idx, 1);
-        this.renderMessages();
-        try {
-            const res = await fetch(`${API_BASE}/messages/${msgId}`, { method: 'DELETE', headers: authManager.getAuthHeaders() });
-            if (!res.ok) throw new Error();
-        } catch {
-            this.messages.splice(idx, 0, removed);
-            this.renderMessages();
-            this.showToast('Не удалось удалить сообщение', 'error');
-        }
-    }
-
+    // ========== ПОИСК И ПОЛЬЗОВАТЕЛИ ==========
     async searchUsers(query) {
         if (query.length < 2) {
             document.getElementById('searchResults').innerHTML = '';
             return;
         }
         try {
-            const res = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(query)}`, { headers: authManager.getAuthHeaders() });
+            const res = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(query)}`, {
+                headers: authManager.getAuthHeaders()
+            });
             if (res.ok) this.renderUserList(await res.json());
         } catch(e) { console.error(e); }
     }
@@ -682,6 +692,7 @@ class MessageManager {
         document.getElementById('messageInput').focus();
     }
 
+    // ========== АВТООБНОВЛЕНИЕ ==========
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
         const refresh = () => {
@@ -755,6 +766,22 @@ class MessageManager {
         const date = new Date(timestamp);
         const yakutskDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
         return yakutskDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    toggleSelectionMode() {
+        this.selectionMode = !this.selectionMode;
+        if (!this.selectionMode) this.selectedMessages.clear();
+        this.updateChatHeader();
+        this.renderMessages();
+    }
+
+    exitSelectionMode() {
+        if (this.selectionMode) {
+            this.selectionMode = false;
+            this.selectedMessages.clear();
+            this.updateChatHeader();
+            this.renderMessages();
+        }
     }
 }
 
