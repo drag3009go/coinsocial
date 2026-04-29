@@ -3,6 +3,7 @@ import uuid
 import os
 import shutil
 import asyncio
+import json
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
@@ -10,7 +11,6 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pywebpush import webpush, WebPushException
-import json
 
 # Импорты из модулей проекта
 from backend.database import (
@@ -27,23 +27,37 @@ logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
 async def delete_old_posts_and_messages():
-    """Фоновая задача: удалять посты и сообщения старше 168 часов (7 дней),
-       а также файлы старше 168 часов (кроме аватаров)."""
+    """Фоновая задача: удалять посты и сообщения старше 120 часов (5 дней),
+       а также связанные файлы из Supabase Storage."""
     while True:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cutoff_64 = (datetime.now() - timedelta(hours=168)).isoformat()
-            cutoff_92 = (datetime.now() - timedelta(hours=168)).isoformat()
+            cutoff = (datetime.now() - timedelta(hours=120)).isoformat()  # 5 дней
 
-            # 1. Удаляем старые посты (получаем их id)
-            cursor.execute("DELETE FROM posts WHERE timestamp < %s RETURNING id", (cutoff_64,))
+            # 1. Удаляем старые сообщения и их медиа
+            cursor.execute("SELECT id, media_urls FROM messages WHERE timestamp < %s", (cutoff,))
+            old_messages = cursor.fetchall()
+            for msg in old_messages:
+                if msg.get("media_urls"):
+                    # media_urls может быть строкой JSON или уже распарсенным списком
+                    if isinstance(msg["media_urls"], str):
+                        try:
+                            urls = json.loads(msg["media_urls"])
+                        except:
+                            urls = []
+                    else:
+                        urls = msg["media_urls"] if isinstance(msg["media_urls"], list) else []
+                    for url in urls:
+                        delete_file(url)
+                    # Удаляем записи из uploaded_files, если они были (на всякий случай)
+                    for url in urls:
+                        cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (url,))
+            cursor.execute("DELETE FROM messages WHERE timestamp < %s", (cutoff,))
+
+            # 2. Удаляем старые посты и их файлы
+            cursor.execute("DELETE FROM posts WHERE timestamp < %s RETURNING id", (cutoff,))
             deleted_post_ids = [row["id"] for row in cursor.fetchall()]
-
-            # 2. Удаляем старые сообщения
-            cursor.execute("DELETE FROM messages WHERE timestamp < %s", (cutoff_64,))
-
-            # 3. Для каждого удалённого поста удаляем связанные файлы
             for pid in deleted_post_ids:
                 cursor.execute("SELECT url FROM uploaded_files WHERE post_id = %s", (pid,))
                 files = cursor.fetchall()
@@ -51,15 +65,14 @@ async def delete_old_posts_and_messages():
                     delete_file(f["url"])
                 cursor.execute("DELETE FROM uploaded_files WHERE post_id = %s", (pid,))
 
-            # 4. Удаляем старые файлы, не привязанные к постам (старше 168 часов)
-            delete_old_files(168)
+            # 3. Удаляем старые файлы, не привязанные к постам (старше 120 часов)
+            delete_old_files(120)
 
             conn.commit()
             conn.close()
-            logger.info(f"🧹 Cleanup: deleted {len(deleted_post_ids)} old posts and related files")
+            logger.info(f"🧹 Cleanup: deleted {len(old_messages)} old messages and {len(deleted_post_ids)} old posts")
         except Exception as e:
             logger.error(f"Error in cleanup task: {e}")
-
         await asyncio.sleep(3600)  # 1 час
 
 @asynccontextmanager
@@ -95,7 +108,6 @@ VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
 VAPID_CLAIMS = {"sub": "mailto:monetochka@example.com"}
 
 async def send_push_notification(user_id: str, title: str, body: str, url: str = "/messages.html"):
-    """Отправляет push-уведомление пользователю, если у него есть подписка."""
     subscription = get_push_subscription(user_id)
     if not subscription:
         return
@@ -208,7 +220,7 @@ async def create_post(post_data: dict, current_user: dict = Depends(get_current_
         cursor.execute("SELECT id FROM users WHERE id = %s", (current_user["id"],))
         if not cursor.fetchone():
             conn.close()
-            raise HTTPException(404, "User not found in database")
+            raise HTTPException(404, "User not found")
         cursor.execute(
             "INSERT INTO posts (id, user_id, content, media_url, media_type, timestamp) VALUES (%s, %s, %s, %s, %s, %s)",
             (post_id, current_user["id"], content, media_url, media_type, datetime.now().isoformat())
@@ -220,7 +232,7 @@ async def create_post(post_data: dict, current_user: dict = Depends(get_current_
         row = cursor.fetchone()
         new_coins = row["coins"] if row else 0
         conn.commit()
-        logger.info(f"Post {post_id} created by user {current_user['id']}")
+        logger.info(f"Post {post_id} created")
     except Exception as e:
         conn.close()
         logger.error(f"Post creation error: {e}")
@@ -258,7 +270,7 @@ async def update_post(post_id: str, post_data: dict, current_user: dict = Depend
         raise HTTPException(404, "Post not found")
     if post["user_id"] != current_user["id"]:
         conn.close()
-        raise HTTPException(403, "Not authorized to edit this post")
+        raise HTTPException(403, "Not authorized")
     cursor.execute("UPDATE posts SET content = %s WHERE id = %s", (content, post_id))
     conn.commit()
     conn.close()
@@ -275,7 +287,7 @@ async def delete_post(post_id: str, current_user: dict = Depends(get_current_use
         raise HTTPException(404, "Post not found")
     if post["user_id"] != current_user["id"]:
         conn.close()
-        raise HTTPException(403, "Not authorized to delete this post")
+        raise HTTPException(403, "Not authorized")
     if post["media_url"]:
         delete_file(post["media_url"])
         cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (post["media_url"],))
@@ -468,7 +480,6 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     conversations.sort(key=lambda x: x["timestamp"], reverse=True)
     return conversations
 
-
 @app.post("/messages/send")
 async def send_message(message_data: dict, current_user: dict = Depends(get_current_user)):
     receiver_id = message_data.get("receiver_id")
@@ -489,16 +500,13 @@ async def send_message(message_data: dict, current_user: dict = Depends(get_curr
             (msg_id, current_user["id"], receiver_id, content, json.dumps(media_urls), datetime.now().isoformat(), False)
         )
         conn.commit()
-        # push-уведомления (можно закомментировать, если не настроены)
-        # await send_push_notification(receiver_id, "Новое сообщение", f"От {current_user['username']}: {content[:50]}", "/messages.html")
+        await send_push_notification(receiver_id, "Новое сообщение", f"От {current_user['username']}: {content[:50]}", "/messages.html")
     except Exception as e:
         conn.close()
         logger.error(f"Send message error: {e}")
         raise HTTPException(500, "Database error")
     conn.close()
     return {"id": msg_id}
-
-
 
 @app.get("/messages/{user_id}")
 async def get_messages(user_id: str, current_user: dict = Depends(get_current_user)):
@@ -519,7 +527,6 @@ async def get_messages(user_id: str, current_user: dict = Depends(get_current_us
     result = []
     for msg in messages:
         d = dict(msg)
-        # Преобразуем JSONB в список, если поле есть
         if d.get("media_urls"):
             if isinstance(d["media_urls"], str):
                 try:
@@ -535,7 +542,6 @@ async def get_messages(user_id: str, current_user: dict = Depends(get_current_us
         result.append(d)
     return result
 
-
 @app.delete("/messages/{message_id}")
 async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
@@ -548,6 +554,19 @@ async def delete_message(message_id: str, current_user: dict = Depends(get_curre
     if msg["sender_id"] != current_user["id"]:
         conn.close()
         raise HTTPException(403, "Not authorized")
+    # Удаляем файлы, связанные с сообщением, если они есть
+    cursor.execute("SELECT media_urls FROM messages WHERE id = %s", (message_id,))
+    row = cursor.fetchone()
+    if row and row.get("media_urls"):
+        urls = row["media_urls"]
+        if isinstance(urls, str):
+            try:
+                urls = json.loads(urls)
+            except:
+                urls = []
+        for url in urls:
+            delete_file(url)
+            cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (url,))
     cursor.execute("DELETE FROM messages WHERE id = %s", (message_id,))
     conn.commit()
     conn.close()
