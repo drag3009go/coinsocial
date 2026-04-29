@@ -71,6 +71,11 @@ class MessageManager {
                     continue;
                 }
                 if (file.type.startsWith('video/')) {
+                    // ограничение размера 60 МБ
+                    if (file.size > 60 * 1024 * 1024) {
+                        this.showToast('Видео не должно превышать 60 МБ', 'error');
+                        continue;
+                    }
                     const duration = await this.getVideoDuration(file);
                     if (duration > 60) {
                         this.showToast('Видео не должно превышать 60 секунд', 'error');
@@ -297,9 +302,7 @@ class MessageManager {
         if (!authManager.isAuthenticated()) return;
         this.saveVideoTimes();
         try {
-            const res = await fetch(`${API_BASE}/messages/${userId}`, {
-                headers: authManager.getAuthHeaders()
-            });
+            const res = await fetch(`${API_BASE}/messages/${userId}`, { headers: authManager.getAuthHeaders() });
             if (res.ok) {
                 this.messages = await res.json();
                 this.renderMessages();
@@ -347,7 +350,8 @@ class MessageManager {
             }
             const sending = msg.is_temp ? '<div class="sending">⏳ Отправка...</div>' : '';
             const error = msg.error ? '<div class="error-badge">⚠️ Ошибка</div>' : '';
-            const check = this.selectionMode ? `<input type="checkbox" class="msg-checkbox" data-id="${msg.id}" ${this.selectedMessages.has(msg.id) ? 'checked' : ''}>` : '';
+            // Чекбокс только для своих сообщений и только в режиме выбора
+            const check = (this.selectionMode && isMy) ? `<input type="checkbox" class="msg-checkbox" data-id="${msg.id}" ${this.selectedMessages.has(msg.id) ? 'checked' : ''}>` : '';
             const menuBtn = (isMy && !msg.is_temp && !this.selectionMode) ? `<button class="message-menu-btn" data-id="${msg.id}" data-content="${escapeHtml(msg.content)}">⋮</button>` : '';
 
             return `
@@ -373,6 +377,7 @@ class MessageManager {
                 this.showMessageMenu(msgId, content, e);
             };
         });
+
         if (this.selectionMode) {
             document.querySelectorAll('.msg-checkbox').forEach(cb => {
                 cb.onchange = () => {
@@ -383,7 +388,7 @@ class MessageManager {
             });
         }
 
-        // Установка обработчиков видео и флага воспроизведения
+        // Обработчики видео
         document.querySelectorAll('.msg-media-video').forEach(video => {
             const wrapper = video.closest('.video-wrapper');
             const loader = wrapper?.querySelector('.video-loading');
@@ -393,19 +398,9 @@ class MessageManager {
                 }, { once: true });
                 if (video.readyState >= 3) loader.style.display = 'none';
             }
-            // Удаляем предыдущие обработчики (если есть) и добавляем новые
-            const playHandler = () => {
-                this.isVideoPlaying = true;
-                console.log('Video playing, auto-refresh paused');
-            };
-            const pauseHandler = () => {
-                this.isVideoPlaying = false;
-                console.log('Video paused, auto-refresh resumed');
-            };
-            const endedHandler = () => {
-                this.isVideoPlaying = false;
-                console.log('Video ended, auto-refresh resumed');
-            };
+            const playHandler = () => { this.isVideoPlaying = true; };
+            const pauseHandler = () => { this.isVideoPlaying = false; };
+            const endedHandler = () => { this.isVideoPlaying = false; };
             video.removeEventListener('play', playHandler);
             video.removeEventListener('pause', pauseHandler);
             video.removeEventListener('ended', endedHandler);
@@ -699,7 +694,6 @@ class MessageManager {
             }
             this.loadConversations();
         };
-        // Интервал 10 секунд (можно подстроить под свои нужды)
         this.autoRefreshInterval = setInterval(refresh, 10000);
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -707,7 +701,6 @@ class MessageManager {
             } else {
                 if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
                 this.autoRefreshInterval = setInterval(refresh, 10000);
-                // Не вызываем refresh сразу
             }
         });
     }
