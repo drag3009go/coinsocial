@@ -189,13 +189,6 @@ class MessageManager {
         return [];
     }
 
-    scrollToBottom() {
-    const container = document.getElementById('chatMessages');
-    if (container) {
-        container.scrollTop = container.scrollHeight;
-    }
-}
-
     renderConversations() {
         const container = document.getElementById('conversationsList');
         if (!container) return;
@@ -462,7 +455,6 @@ class MessageManager {
         const newContent = prompt('Введите новый текст:', originalContent);
         if (!newContent || newContent === originalContent) return;
 
-        // Мгновенное обновление текста
         msg.content = newContent;
         this.renderMessages();
 
@@ -474,7 +466,6 @@ class MessageManager {
             });
             if (!res.ok) throw new Error();
         } catch (err) {
-            // Откат при ошибке
             msg.content = originalContent;
             this.renderMessages();
             this.showToast('Не удалось изменить сообщение', 'error');
@@ -486,122 +477,74 @@ class MessageManager {
         if (idx === -1) return;
         const removed = this.messages.splice(idx, 1)[0];
         this.renderMessages();
-        // Асинхронное удаление на сервере
         fetch(`${API_BASE}/messages/${msgId}`, {
             method: 'DELETE',
             headers: authManager.getAuthHeaders()
         }).catch(err => {
-            // Возвращаем сообщение обратно при ошибке
             this.messages.push(removed);
             this.renderMessages();
             this.showToast('Не удалось удалить сообщение', 'error');
         });
     }
 
-   async sendMessage() {
-    const input = document.getElementById('messageInput');
-    const text = input.value.trim();
-    if ((!text || text === '') && this.attachedFiles.length === 0) return;
+    async sendMessage() {
+        const input = document.getElementById('messageInput');
+        const text = input.value.trim();
+        if ((!text || text === '') && this.attachedFiles.length === 0) return;
 
-    // Оптимистичное добавление временного сообщения
-    const tempId = 'temp_' + Date.now() + '_' + Math.random();
-    const currentUser = authManager.getCurrentUser();
-    const tempMsg = {
-        id: tempId,
-        sender_id: currentUser.id,
-        content: text,
-        media_urls: [],
-        timestamp: new Date().toISOString(),
-        is_temp: true,
-        error: false
-    };
-    this.messages.push(tempMsg);
-    this.renderMessages();
-    this.scrollToBottom();
-    input.value = '';
-    const attached = [...this.attachedFiles];
-    this.attachedFiles = [];
-    this.renderMediaPreview();
-
-    // Асинхронная загрузка файлов
-    let mediaUrls = [];
-    let uploadError = false;
-    for (const file of attached) {
-        const formData = new FormData();
-        formData.append('file', file);
-        try {
-            const res = await fetch(`${API_BASE}/upload/media`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${authManager.token}` },
-                body: formData
-            });
-            if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-            const data = await res.json();
-            if (data.media_url) mediaUrls.push(data.media_url);
-            else throw new Error('No media_url in response');
-        } catch (err) {
-            console.error(err);
-            uploadError = true;
-            this.showToast('Ошибка загрузки медиа', 'error');
-            const idx = this.messages.findIndex(m => m.id === tempId);
-            if (idx !== -1) {
-                this.messages[idx].error = true;
-                this.messages[idx].is_temp = false;
-                this.renderMessages();
-            }
-            return;
-        }
-    }
-
-    // Обновляем временное сообщение: добавляем ссылки на файлы, убираем флаг временности
-    const idx = this.messages.findIndex(m => m.id === tempId);
-    if (idx !== -1) {
-        this.messages[idx].media_urls = mediaUrls;
-        this.messages[idx].is_temp = false;
-        this.messages[idx].error = false;
+        const tempId = 'temp_' + Date.now() + '_' + Math.random();
+        const currentUser = authManager.getCurrentUser();
+        const tempMsg = {
+            id: tempId,
+            sender_id: currentUser.id,
+            content: text,
+            media_urls: [],
+            timestamp: new Date().toISOString(),
+            is_temp: true,
+            error: false
+        };
+        this.messages.push(tempMsg);
         this.renderMessages();
-    }
+        this.scrollToBottom();
+        input.value = '';
+        const attached = [...this.attachedFiles];
+        this.attachedFiles = [];
+        this.renderMediaPreview();
 
-    // Отправка финального сообщения на сервер
-    try {
-        const res = await fetch(`${API_BASE}/messages/send`, {
-            method: 'POST',
-            headers: authManager.getAuthHeaders(),
-            body: JSON.stringify({
-                receiver_id: this.currentConversation,
-                content: text,
-                media_urls: mediaUrls
-            })
-        });
-        if (res.ok) {
-            const data = await res.json();
-            if (idx !== -1) this.messages[idx].id = data.id;
-            this.renderMessages();
-            // Лёгкая синхронизация (можно получить новые сообщения, но без перезагрузки)
-            // Можно просто обновить список диалогов, чтобы обновить счётчики
-            this.loadConversations();
-        } else {
-            throw new Error('Send failed');
+        let mediaUrls = [];
+        for (const file of attached) {
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const res = await fetch(`${API_BASE}/upload/media`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authManager.token}` },
+                    body: formData
+                });
+                if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+                const data = await res.json();
+                if (data.media_url) mediaUrls.push(data.media_url);
+                else throw new Error('No media_url in response');
+            } catch (err) {
+                console.error(err);
+                this.showToast('Ошибка загрузки медиа', 'error');
+                const idx = this.messages.findIndex(m => m.id === tempId);
+                if (idx !== -1) {
+                    this.messages[idx].error = true;
+                    this.messages[idx].is_temp = false;
+                    this.renderMessages();
+                }
+                return;
+            }
         }
-    } catch (err) {
-        console.error(err);
-        if (idx !== -1) {
-            this.messages[idx].error = true;
-            this.messages[idx].is_temp = false;
-            this.renderMessages();
-        }
-        this.showToast('Не удалось отправить сообщение', 'error');
-    }
-}
-        // Обновляем временное сообщение: добавляем ссылки на файлы, убираем флаг временности
+
         const idx = this.messages.findIndex(m => m.id === tempId);
         if (idx !== -1) {
             this.messages[idx].media_urls = mediaUrls;
             this.messages[idx].is_temp = false;
+            this.renderMessages();
         }
-        this.renderMessages();
 
-        // Отправка финального сообщения на сервер
         try {
             const res = await fetch(`${API_BASE}/messages/send`, {
                 method: 'POST',
@@ -616,8 +559,7 @@ class MessageManager {
                 const data = await res.json();
                 if (idx !== -1) this.messages[idx].id = data.id;
                 this.renderMessages();
-                // Дополнительно перезагрузим сообщения для синхронизации порядка
-                await this.loadMessages(this.currentConversation);
+                this.loadConversations(); // обновляем список диалогов, чтобы обновить счётчики
             } else {
                 throw new Error('Send failed');
             }
@@ -637,7 +579,6 @@ class MessageManager {
         if (!toDelete.length) return;
         if (!confirm(`Удалить ${toDelete.length} сообщение(ий)?`)) return;
 
-        // Оптимистичное удаление: убираем выбранные сообщения из списка
         const removedMessages = [];
         const newMessages = [];
         for (const msg of this.messages) {
@@ -652,7 +593,6 @@ class MessageManager {
         this.renderMessages();
         this.exitSelectionMode();
 
-        // Асинхронное удаление на сервере по одному
         for (const msgId of toDelete) {
             fetch(`${API_BASE}/messages/${msgId}`, {
                 method: 'DELETE',
@@ -670,16 +610,13 @@ class MessageManager {
         this.showToast(`Удаление выполняется...`, 'info');
     }
 
-    // ========== ПОИСК И ПОЛЬЗОВАТЕЛИ ==========
     async searchUsers(query) {
         if (query.length < 2) {
             document.getElementById('searchResults').innerHTML = '';
             return;
         }
         try {
-            const res = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(query)}`, {
-                headers: authManager.getAuthHeaders()
-            });
+            const res = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(query)}`, { headers: authManager.getAuthHeaders() });
             if (res.ok) this.renderUserList(await res.json());
         } catch(e) { console.error(e); }
     }
@@ -739,7 +676,6 @@ class MessageManager {
         document.getElementById('messageInput').focus();
     }
 
-    // ========== АВТООБНОВЛЕНИЕ ==========
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
         const refresh = () => {
@@ -813,6 +749,11 @@ class MessageManager {
         const date = new Date(timestamp);
         const yakutskDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
         return yakutskDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    scrollToBottom() {
+        const container = document.getElementById('chatMessages');
+        if (container) container.scrollTop = container.scrollHeight;
     }
 
     toggleSelectionMode() {
