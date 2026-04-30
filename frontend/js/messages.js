@@ -561,8 +561,6 @@ class MessageManager {
         this.messages[idx].media_urls = mediaUrls;
         this.messages[idx].is_temp = false;
         this.renderMessages();
-    } else {
-        console.warn('Temporary message not found before sending, but continuing');
     }
 
     try {
@@ -578,11 +576,10 @@ class MessageManager {
         if (res.ok) {
             const data = await res.json();
             if (idx !== -1) {
+                // Обновляем реальный id и снимаем флаг временности
                 this.messages[idx].id = data.id;
+                this.messages[idx].is_temp = false;
                 this.renderMessages();
-            } else {
-                // Если временное сообщение пропало, просто перезагрузим переписку
-                await this.loadMessages(this.currentConversation);
             }
             this.loadConversations();
         } else {
@@ -598,6 +595,7 @@ class MessageManager {
         this.showToast('Не удалось отправить сообщение', 'error');
     }
 }
+    
     
     async deleteSelectedMessages() {
         const toDelete = Array.from(this.selectedMessages);
