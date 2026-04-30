@@ -296,20 +296,36 @@ class MessageManager {
     }
 
     async loadMessages(userId) {
-        if (!authManager.isAuthenticated()) return;
-        this.saveVideoTimes();
-        try {
-            const res = await fetch(`${API_BASE}/messages/${userId}`, { headers: authManager.getAuthHeaders() });
-            if (res.ok) {
-                this.messages = await res.json();
-                this.renderMessages();
-                this.restoreVideoTimes();
-                this.scrollToBottom();
-            } else {
-                this.showToast('Ошибка загрузки сообщений', 'error');
+    if (!authManager.isAuthenticated()) return;
+    this.saveVideoTimes();
+    try {
+        const res = await fetch(`${API_BASE}/messages/${userId}`, {
+            headers: authManager.getAuthHeaders()
+        });
+        if (res.ok) {
+            const serverMessages = await res.json();
+            // Оставляем все временные сообщения (is_temp === true) из текущего списка
+            const tempMessages = this.messages.filter(m => m.is_temp === true);
+            // Объединяем сообщения с сервера и временные, удаляя возможные дубликаты по id
+            const allMessages = [...serverMessages, ...tempMessages];
+            // Убираем дубликаты (если временное сообщение уже получило реальный id, оно окажется в serverMessages)
+            const uniqueMap = new Map();
+            for (const msg of allMessages) {
+                // Если сообщение с таким id уже есть, пропускаем
+                if (!uniqueMap.has(msg.id)) {
+                    uniqueMap.set(msg.id, msg);
+                }
             }
-        } catch(e) { console.error(e); }
-    }
+            this.messages = Array.from(uniqueMap.values());
+            this.messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            this.renderMessages();
+            this.restoreVideoTimes();
+            this.scrollToBottom();
+        } else {
+            this.showToast('Ошибка загрузки сообщений', 'error');
+        }
+    } catch(e) { console.error(e); }
+}
 
     renderMessages() {
         const container = document.getElementById('chatMessages');
