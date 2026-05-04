@@ -546,30 +546,42 @@ async def get_messages(user_id: str, current_user: dict = Depends(get_current_us
 async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT sender_id FROM messages WHERE id = %s", (message_id,))
-    msg = cursor.fetchone()
-    if not msg:
+    try:
+        # Устанавливаем таймаут на случай долгих операций
+        cursor.execute("SET statement_timeout = '60s'")
+        
+        # Получаем информацию о сообщении
+        cursor.execute("SELECT sender_id, media_urls FROM messages WHERE id = %s", (message_id,))
+        msg = cursor.fetchone()
+        if not msg:
+            raise HTTPException(404, "Message not found")
+        if msg["sender_id"] != current_user["id"]:
+            raise HTTPException(403, "Not authorized")
+        
+        # Удаляем сообщение из базы данных (быстро)
+        cursor.execute("DELETE FROM messages WHERE id = %s", (message_id,))
+        conn.commit()  # Фиксируем удаление сообщения
+        
+        # Теперь удаляем файлы (вне транзакции, чтобы не замедлять)
+        if msg.get("media_urls"):
+            urls = msg["media_urls"]
+            if isinstance(urls, str):
+                try:
+                    urls = json.loads(urls)
+                except:
+                    urls = []
+            for url in urls:
+                delete_file(url)  # эта функция может быть медленной
+                cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (url,))
+                conn.commit()  # коммитим каждое удаление записи об uploaded_files
         conn.close()
-        raise HTTPException(404, "Message not found")
-    if msg["sender_id"] != current_user["id"]:
+    except HTTPException:
         conn.close()
-        raise HTTPException(403, "Not authorized")
-    # Удаляем файлы, связанные с сообщением, если они есть
-    cursor.execute("SELECT media_urls FROM messages WHERE id = %s", (message_id,))
-    row = cursor.fetchone()
-    if row and row.get("media_urls"):
-        urls = row["media_urls"]
-        if isinstance(urls, str):
-            try:
-                urls = json.loads(urls)
-            except:
-                urls = []
-        for url in urls:
-            delete_file(url)
-            cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (url,))
-    cursor.execute("DELETE FROM messages WHERE id = %s", (message_id,))
-    conn.commit()
-    conn.close()
+        raise
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete message error: {e}")
+        raise HTTPException(500, "Database error")
     return {"message": "Message deleted"}
 
 @app.put("/messages/{message_id}")
