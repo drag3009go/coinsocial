@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
 async def delete_old_posts_and_messages():
-    await asyncio.sleep(10)  # даём серверу запуститься
+    await asyncio.sleep(70)  # даём серверу запуститься
     while True:
         try:
             conn = get_db_connection()
@@ -56,6 +56,7 @@ async def delete_old_posts_and_messages():
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(delete_old_posts_and_messages())
     yield
+    print("lifespan запустился")
     task.cancel()
 # ---------- Создание приложения ----------
 app = FastAPI(title="Монеточка API", version="1.0.0", lifespan=lifespan)
