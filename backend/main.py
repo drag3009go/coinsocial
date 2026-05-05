@@ -26,56 +26,8 @@ logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
 async def delete_old_posts_and_messages():
-    await asyncio.sleep(50)  # даём серверу запуститься
-    while True:
-        logger.info("Запуск очистки старых записей")
-        conn = None
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cutoff = (datetime.now() - timedelta(hours=168)).isoformat()  # 7 дней в UTC
-
-            # 1. Удаляем старые посты и их медиа
-            cursor.execute("SELECT id, media_url FROM posts WHERE timestamp < %s", (cutoff,))
-            old_posts = cursor.fetchall()
-            for post in old_posts:
-                if post.get("media_url"):
-                    delete_file(post["media_url"])
-                    cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (post["media_url"],))
-            cursor.execute("DELETE FROM posts WHERE timestamp < %s", (cutoff,))
-            logger.info(f"Удалено старых постов: {len(old_posts)}")
-
-            # 2. Удаляем старые сообщения и их медиа (отдельно, с тем же cutoff)
-            cursor.execute("SELECT id, media_urls FROM messages WHERE timestamp < %s", (cutoff,))
-            old_msgs = cursor.fetchall()
-            for msg in old_msgs:
-                if msg.get("media_urls"):
-                    urls = json.loads(msg["media_urls"]) if isinstance(msg["media_urls"], str) else msg["media_urls"]
-                    for url in urls:
-                        delete_file(url)
-                        cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (url,))
-            cursor.execute("DELETE FROM messages WHERE timestamp < %s", (cutoff,))
-            logger.info(f"Удалено старых сообщений: {len(old_msgs)}")
-
-            # 3. Удаляем файлы-сироты
-            delete_old_files(2)
-
-            conn.commit()
-            logger.info("Очистка завершена успешно")
-        except Exception as e:
-            logger.error(f"Ошибка при очистке: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
-        finally:
-            if conn:
-                conn.close()
-        await asyncio.sleep(3600)  # раз в час
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    task = asyncio.create_task(delete_old_posts_and_messages())
-    yield
-    task.cancel()
+    await asyncio.sleep(30)
+    print("Cleanup task started (but does nothing)")
 
 # ---------- Создание приложения ----------
 app = FastAPI(title="Монеточка API", version="1.0.0", lifespan=lifespan)
