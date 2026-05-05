@@ -27,41 +27,48 @@ logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
 async def delete_old_posts_and_messages():
+    """Удаляет посты и сообщения старше 7 дней, а также их медиафайлы."""
     while True:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cutoff = (datetime.now() - timedelta(hours=168)).isoformat()  # 7 дней
 
-            # 1. Удаляем старые посты и их медиа
-            cursor.execute("SELECT id, media_url FROM posts WHERE timestamp < %s", (cutoff,))
+            # 1. Удаляем старые посты и их медиа (используем NOW() - INTERVAL '7 days' для надёжности)
+            cursor.execute("""
+                DELETE FROM posts
+                WHERE timestamp < NOW() - INTERVAL '7 days'
+                RETURNING id, media_url
+            """)
             old_posts = cursor.fetchall()
             for post in old_posts:
-                if post["media_url"]:
+                if post.get("media_url"):
                     delete_file(post["media_url"])
                     cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (post["media_url"],))
-            cursor.execute("DELETE FROM posts WHERE timestamp < %s", (cutoff,))
 
             # 2. Удаляем старые сообщения и их медиа
-            cursor.execute("SELECT id, media_urls FROM messages WHERE timestamp < %s", (cutoff,))
+            cursor.execute("""
+                DELETE FROM messages
+                WHERE timestamp < NOW() - INTERVAL '7 days'
+                RETURNING id, media_urls
+            """)
             old_messages = cursor.fetchall()
             for msg in old_messages:
-                if msg["media_urls"]:
-                    urls = json.loads(msg["media_urls"]) if isinstance(msg["media_urls"], str) else msg["media_urls"]
+                if msg.get("media_urls"):
+                    urls = msg["media_urls"] if isinstance(msg["media_urls"], list) else json.loads(msg["media_urls"])
                     for url in urls:
                         delete_file(url)
                         cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (url,))
-            cursor.execute("DELETE FROM messages WHERE timestamp < %s", (cutoff,))
 
-            # 3. Удаляем старые файлы, не привязанные к постам или сообщениям (старше 7 дней)
-            delete_old_files(168)
+            # 3. Удаляем «осиротевшие» файлы (без привязки к посту или сообщению) старше 7 дней
+            delete_old_files(2)
 
             conn.commit()
             conn.close()
-            logger.info(f"🧹 Cleanup: deleted {len(old_posts)} old posts, {len(old_messages)} old messages")
+            logger.info(f"🧹 Cleanup: deleted {len(old_posts)} old posts and {len(old_messages)} old messages")
         except Exception as e:
             logger.error(f"Error in cleanup task: {e}")
-        await asyncio.sleep(3600)
+        await asyncio.sleep(3600)  # запуск каждый час
+        
 
 
 @asynccontextmanager
@@ -207,18 +214,10 @@ async def create_post(post_data: dict, current_user: dict = Depends(get_current_
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT id FROM users WHERE id = %s", (current_user["id"],))
-        if not cursor.fetchone():
-            conn.close()
-            raise HTTPException(404, "User not found")
         cursor.execute(
             "INSERT INTO posts (id, user_id, content, media_url, media_type, timestamp) VALUES (%s, %s, %s, %s, %s, %s)",
             (post_id, current_user["id"], content, media_url, media_type, datetime.now().isoformat())
         )
-        # Если есть media_url, добавим запись в uploaded_files (для отслеживания)
-        if media_url:
-            file_id = str(uuid.uuid4())
-            save_uploaded_file(file_id, media_url, "media", current_user["id"], post_id, is_avatar=False)
         cursor.execute("UPDATE users SET coins = coins + 5 WHERE id = %s", (current_user["id"],))
         cursor.execute("SELECT coins FROM users WHERE id = %s", (current_user["id"],))
         row = cursor.fetchone()
@@ -231,7 +230,6 @@ async def create_post(post_data: dict, current_user: dict = Depends(get_current_
         raise HTTPException(500, "Database error")
     conn.close()
     return {"post_id": post_id, "coins_earned": 5, "new_balance": new_coins}
-    
 
 
 
