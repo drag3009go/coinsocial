@@ -24,6 +24,7 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # users
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
@@ -36,6 +37,8 @@ def init_db():
             last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # posts
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS posts (
             id TEXT PRIMARY KEY,
@@ -49,6 +52,8 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
+
+    # comments
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS comments (
             id TEXT PRIMARY KEY,
@@ -62,7 +67,16 @@ def init_db():
             FOREIGN KEY (parent_comment_id) REFERENCES comments (id) ON DELETE CASCADE
         )
     ''')
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id)")
+
+    # индекс на parent_comment_id (с увеличенным таймаутом)
+    try:
+        cursor.execute("SET statement_timeout = '180s'")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id)")
+        cursor.execute("SET statement_timeout = '30s'")
+    except Exception as e:
+        print(f"Warning: Could not create index idx_comments_parent: {e}")
+
+    # post_reactions
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS post_reactions (
             user_id TEXT NOT NULL,
@@ -74,7 +88,8 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-    # messages – добавлен индекс по timestamp
+
+    # messages
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
@@ -88,7 +103,8 @@ def init_db():
             FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)')
+
+    # uploaded_files
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS uploaded_files (
             id TEXT PRIMARY KEY,
@@ -102,6 +118,8 @@ def init_db():
             FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE
         )
     ''')
+
+    # push_subscriptions
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS push_subscriptions (
             user_id TEXT PRIMARY KEY,
@@ -110,11 +128,15 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
+
+    # остальные индексы
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id, receiver_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_uploaded_files_created ON uploaded_files(created_at)')
+
     conn.commit()
     conn.close()
 
@@ -137,7 +159,7 @@ def save_uploaded_file(file_id, url, bucket, user_id, post_id=None, is_avatar=Fa
     conn.commit()
     conn.close()
 
-def delete_old_files(older_than_hours=120):
+def delete_old_files(older_than_hours=168):
     from backend.storage import delete_file
     conn = get_db_connection()
     cursor = conn.cursor()
