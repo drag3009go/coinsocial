@@ -110,31 +110,29 @@ def init_db():
     conn.commit()
     conn.close()
 
-    # --- 2. Обычные индексы (отдельная транзакция) ---
-    conn2 = get_db_connection()
-    cursor2 = conn2.cursor()
-    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)')
-    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp)')
-    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)')
-    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id, receiver_id)')
-    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)')
-    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_uploaded_files_created ON uploaded_files(created_at)')
-    conn2.commit()
-    conn2.close()
-
-    # --- 3. Проблемный индекс (отдельное соединение, большой таймаут) ---
-    conn3 = get_db_connection()
-    cursor3 = conn3.cursor()
-    try:
-        cursor3.execute("SET statement_timeout = '300s'")
-        cursor3.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id)")
-        cursor3.execute("SET statement_timeout = '30s'")
-        conn3.commit()
-    except Exception as e:
-        print(f"Warning: Could not create index idx_comments_parent: {e}")
-        conn3.rollback()
-    finally:
-        conn3.close()
+    # --- 2. Создание индексов – каждый в отдельной транзакции с увеличенным таймаутом ---
+    index_queries = [
+        "CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)",
+        "CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id, receiver_id)",
+        "CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_uploaded_files_created ON uploaded_files(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id)"
+    ]
+    for sql in index_queries:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SET statement_timeout = '300s'")
+            cursor.execute(sql)
+            cursor.execute("SET statement_timeout = '30s'")
+            conn.commit()
+        except Exception as e:
+            print(f"Warning: Could not create index ({sql}): {e}")
+            conn.rollback()
+        finally:
+            conn.close()
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
