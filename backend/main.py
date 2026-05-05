@@ -25,12 +25,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
-async def delete_old_posts_and_messages():
-    await asyncio.sleep(30)
-    print("Cleanup task started (but does nothing)")
 
 # ---------- Создание приложения ----------
-app = FastAPI(title="Монеточка API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Монеточка API", version="1.0.0")
 
 # CORS
 app.add_middleware(
