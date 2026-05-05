@@ -26,33 +26,43 @@ logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
 async def delete_old_posts_and_messages():
-    # Ждём 60 секунд, чтобы сервер точно стартовал
+    # Явно создаём logger внутри функции, либо используем print
+    import logging
+    logger = logging.getLogger(__name__)
+    # Даём серверу время на запуск
     await asyncio.sleep(60)
     while True:
+        conn = None
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
             cutoff = (datetime.now() - timedelta(days=7)).isoformat()
 
-            # Удаляем посты и их медиа
+            # 1. Удаляем старые посты и их медиа
             cursor.execute("SELECT id, media_url FROM posts WHERE timestamp < %s", (cutoff,))
-            for post in cursor.fetchall():
+            old_posts = cursor.fetchall()
+            for post in old_posts:
                 if post.get("media_url"):
                     delete_file(post["media_url"])
+                    cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (post["media_url"],))
             cursor.execute("DELETE FROM posts WHERE timestamp < %s", (cutoff,))
 
-            # Удаляем сообщения и их медиа
+            # 2. Удаляем старые сообщения и их медиа
             cursor.execute("SELECT id, media_urls FROM messages WHERE timestamp < %s", (cutoff,))
-            for msg in cursor.fetchall():
+            old_msgs = cursor.fetchall()
+            for msg in old_msgs:
                 if msg.get("media_urls"):
-                    urls = json.loads(msg["media_urls"]) if isinstance(msg["media_urls"], str) else msg["media_urls"]
+                    urls = msg["media_urls"] if isinstance(msg["media_urls"], list) else json.loads(msg["media_urls"])
                     for url in urls:
                         delete_file(url)
+                        cursor.execute("DELETE FROM uploaded_files WHERE url = %s", (url,))
             cursor.execute("DELETE FROM messages WHERE timestamp < %s", (cutoff,))
 
+            # 3. Удаляем файлы-сироты (загруженные, но не привязанные)
             delete_old_files(2)
+
             conn.commit()
-            logger.info("Cleanup completed")
+            logger.info(f"Cleanup completed: deleted {len(old_posts)} posts, {len(old_msgs)} messages")
         except Exception as e:
             logger.error(f"Cleanup error: {e}")
             if conn:
@@ -61,12 +71,6 @@ async def delete_old_posts_and_messages():
             if conn:
                 conn.close()
         await asyncio.sleep(3600)
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    task = asyncio.create_task(delete_old_posts_and_messages())
-    yield
-    task.cancel()
 # ---------- Создание приложения ----------
 app = FastAPI(title="Монеточка API", version="1.0.0", lifespan=lifespan)
 # CORS
@@ -471,24 +475,41 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
 async def get_messages(user_id: str, current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute('''
         SELECT * FROM messages
         WHERE (sender_id = %s AND receiver_id = %s) OR (sender_id = %s AND receiver_id = %s)
         ORDER BY timestamp ASC
-    """, (current_user["id"], user_id, user_id, current_user["id"]))
+    ''', (current_user["id"], user_id, user_id, current_user["id"]))
     messages = cursor.fetchall()
-    cursor.execute("UPDATE messages SET is_read = TRUE WHERE sender_id = %s AND receiver_id = %s AND is_read = FALSE", (user_id, current_user["id"]))
+    cursor.execute('''
+        UPDATE messages SET is_read = TRUE
+        WHERE sender_id = %s AND receiver_id = %s AND is_read = FALSE
+    ''', (user_id, current_user["id"]))
     conn.commit()
     conn.close()
+
     result = []
     for msg in messages:
         d = dict(msg)
-        if "media_urls" in d and d["media_urls"]:
-            d["media_urls"] = json.loads(d["media_urls"])
+        # Обработка media_urls: в БД это JSONB, psycopg2 возвращает или list, или str
+        media = d.get("media_urls")
+        if media is None:
+            d["media_urls"] = []
+        elif isinstance(media, list):
+            # уже список (правильно)
+            d["media_urls"] = media
+        elif isinstance(media, str):
+            # строка JSON – парсим
+            try:
+                d["media_urls"] = json.loads(media)
+            except:
+                d["media_urls"] = []
         else:
             d["media_urls"] = []
         result.append(d)
     return result
+
+
 
 @app.post("/messages/send")
 async def send_message(message_data: dict, current_user: dict = Depends(get_current_user)):
