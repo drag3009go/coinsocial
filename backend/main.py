@@ -71,6 +71,10 @@ async def delete_old_posts_and_messages():
             if conn:
                 conn.close()
         await asyncio.sleep(3600)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
 # ---------- Создание приложения ----------
 app = FastAPI(title="Монеточка API", version="1.0.0", lifespan=lifespan)
 # CORS
