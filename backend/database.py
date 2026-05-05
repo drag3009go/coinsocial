@@ -21,10 +21,9 @@ def get_db_connection():
     return conn
 
 def init_db():
+    # --- 1. Создание таблиц (одна транзакция) ---
     conn = get_db_connection()
     cursor = conn.cursor()
-
-    # users
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
@@ -37,8 +36,6 @@ def init_db():
             last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-
-    # posts
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS posts (
             id TEXT PRIMARY KEY,
@@ -52,8 +49,6 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-
-    # comments
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS comments (
             id TEXT PRIMARY KEY,
@@ -67,16 +62,6 @@ def init_db():
             FOREIGN KEY (parent_comment_id) REFERENCES comments (id) ON DELETE CASCADE
         )
     ''')
-
-    # индекс на parent_comment_id (с увеличенным таймаутом)
-    try:
-        cursor.execute("SET statement_timeout = '180s'")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id)")
-        cursor.execute("SET statement_timeout = '30s'")
-    except Exception as e:
-        print(f"Warning: Could not create index idx_comments_parent: {e}")
-
-    # post_reactions
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS post_reactions (
             user_id TEXT NOT NULL,
@@ -88,8 +73,6 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-
-    # messages
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
@@ -103,8 +86,6 @@ def init_db():
             FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-
-    # uploaded_files
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS uploaded_files (
             id TEXT PRIMARY KEY,
@@ -118,8 +99,6 @@ def init_db():
             FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE
         )
     ''')
-
-    # push_subscriptions
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS push_subscriptions (
             user_id TEXT PRIMARY KEY,
@@ -128,17 +107,34 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     ''')
-
-    # остальные индексы
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id, receiver_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_uploaded_files_created ON uploaded_files(created_at)')
-
     conn.commit()
     conn.close()
+
+    # --- 2. Обычные индексы (отдельная транзакция) ---
+    conn2 = get_db_connection()
+    cursor2 = conn2.cursor()
+    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)')
+    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp)')
+    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)')
+    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id, receiver_id)')
+    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)')
+    cursor2.execute('CREATE INDEX IF NOT EXISTS idx_uploaded_files_created ON uploaded_files(created_at)')
+    conn2.commit()
+    conn2.close()
+
+    # --- 3. Проблемный индекс (отдельное соединение, большой таймаут) ---
+    conn3 = get_db_connection()
+    cursor3 = conn3.cursor()
+    try:
+        cursor3.execute("SET statement_timeout = '300s'")
+        cursor3.execute("CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id)")
+        cursor3.execute("SET statement_timeout = '30s'")
+        conn3.commit()
+    except Exception as e:
+        print(f"Warning: Could not create index idx_comments_parent: {e}")
+        conn3.rollback()
+    finally:
+        conn3.close()
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -160,11 +156,15 @@ def save_uploaded_file(file_id, url, bucket, user_id, post_id=None, is_avatar=Fa
     conn.close()
 
 def delete_old_files(older_than_hours=2):
+    """Удаляет файлы-сироты (не привязанные к посту/сообщению) старше N часов."""
     from backend.storage import delete_file
     conn = get_db_connection()
     cursor = conn.cursor()
     cutoff = (datetime.now() - timedelta(hours=older_than_hours)).isoformat()
-    cursor.execute("SELECT id, url, bucket FROM uploaded_files WHERE is_avatar = FALSE AND created_at < %s", (cutoff,))
+    cursor.execute("""
+        SELECT id, url FROM uploaded_files
+        WHERE is_avatar = FALSE AND post_id IS NULL AND created_at < %s
+    """, (cutoff,))
     files = cursor.fetchall()
     for file in files:
         delete_file(file["url"])
