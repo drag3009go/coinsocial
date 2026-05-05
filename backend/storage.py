@@ -47,16 +47,19 @@ def upload_file(file_bytes, filename, content_type, is_avatar=False):
     public_url = supabase.storage.from_(bucket).get_public_url(file_path)
     return public_url
 
+
 def delete_file(file_url):
     """Удаляет файл по публичному URL"""
-    # URL: https://.../storage/v1/object/public/media/uuid.jpg
+    # URL вида: https://project.supabase.co/storage/v1/object/public/bucket/path
     parts = file_url.split('/public/')
     if len(parts) < 2:
+        logger.warning(f"Cannot parse public URL: {file_url}")
         return
     bucket_and_path = parts[1]
     bucket = bucket_and_path.split('/')[0]
     path = '/'.join(bucket_and_path.split('/')[1:])
     try:
         supabase.storage.from_(bucket).remove([path])
+        logger.info(f"Deleted file: {file_url}")
     except Exception as e:
-        print(f"Delete error: {e}")
+        logger.error(f"Delete file error: {e}")
