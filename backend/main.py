@@ -24,6 +24,7 @@ from backend.storage import upload_file, init_storage_buckets, delete_file
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+print("1. main.py загружается")
 # ---------- Lifespan для фоновой задачи ----------
 async def delete_old_posts_and_messages():
     await asyncio.sleep(70)  # даём серверу запуститься
