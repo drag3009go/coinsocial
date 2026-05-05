@@ -39,8 +39,8 @@ app.add_middleware(
 )
 
 # Инициализация БД и хранилища
-init_db()
-init_storage_buckets()
+#init_db()
+#init_storage_buckets()
 logger.info("✅ Database and Storage initialized")
 
 # ---------- Вспомогательная функция push ----------
