@@ -159,7 +159,7 @@ def save_uploaded_file(file_id, url, bucket, user_id, post_id=None, is_avatar=Fa
     conn.commit()
     conn.close()
 
-def delete_old_files(older_than_hours=168):
+def delete_old_files(older_than_hours=2):
     from backend.storage import delete_file
     conn = get_db_connection()
     cursor = conn.cursor()
