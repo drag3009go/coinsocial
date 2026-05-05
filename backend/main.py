@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
 async def delete_old_posts_and_messages():
-    await asyncio.sleep(10)  # даём серверу запуститься
+    await asyncio.sleep(50)  # даём серверу запуститься
     while True:
         logger.info("Запуск очистки старых записей")
         conn = None
