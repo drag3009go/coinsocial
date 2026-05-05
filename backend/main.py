@@ -25,10 +25,50 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ---------- Lifespan для фоновой задачи ----------
+async def delete_old_posts_and_messages():
+    # Ждём 60 секунд, чтобы сервер точно стартовал
+    await asyncio.sleep(60)
+    while True:
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cutoff = (datetime.now() - timedelta(days=7)).isoformat()
 
+            # Удаляем посты и их медиа
+            cursor.execute("SELECT id, media_url FROM posts WHERE timestamp < %s", (cutoff,))
+            for post in cursor.fetchall():
+                if post.get("media_url"):
+                    delete_file(post["media_url"])
+            cursor.execute("DELETE FROM posts WHERE timestamp < %s", (cutoff,))
+
+            # Удаляем сообщения и их медиа
+            cursor.execute("SELECT id, media_urls FROM messages WHERE timestamp < %s", (cutoff,))
+            for msg in cursor.fetchall():
+                if msg.get("media_urls"):
+                    urls = json.loads(msg["media_urls"]) if isinstance(msg["media_urls"], str) else msg["media_urls"]
+                    for url in urls:
+                        delete_file(url)
+            cursor.execute("DELETE FROM messages WHERE timestamp < %s", (cutoff,))
+
+            delete_old_files(2)
+            conn.commit()
+            logger.info("Cleanup completed")
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
+        await asyncio.sleep(3600)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(delete_old_posts_and_messages())
+    yield
+    task.cancel()
 # ---------- Создание приложения ----------
-app = FastAPI(title="Монеточка API", version="1.0.0")
-
+app = FastAPI(title="Монеточка API", version="1.0.0", lifespan=lifespan)
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -39,9 +79,18 @@ app.add_middleware(
 )
 
 # Инициализация БД и хранилища
-#init_db()
-#init_storage_buckets()
-logger.info("✅ Database and Storage initialized")
+try:
+    init_db()
+    logger.info("Database initialized")
+except Exception as e:
+    logger.error(f"Database init error: {e}")
+
+try:
+    init_storage_buckets()
+    logger.info("Storage buckets initialized")
+except Exception as e:
+    logger.error(f"Storage init error: {e}")
+
 
 # ---------- Вспомогательная функция push ----------
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
