@@ -6,6 +6,8 @@ class MessageManager {
         this.autoRefreshInterval = null;
         this.attachedFiles = [];
         this.optimisticUpdates = new Map();
+        this.deletionQueue = [];      // очередь ID сообщений на удаление
+        this.isDeleting = false;      // флаг выполнения удаления
     }
 
     async init() {
@@ -125,12 +127,13 @@ class MessageManager {
     if (!authManager.isAuthenticated()) return;
     // Сохраняем текущие временные сообщения (is_temp === true) и сообщения с пометкой "оптимистично удалено"
     const tempMessages = this.messages.filter(m => m.is_temp === true || m.optimisticDelete === true);
+    const filteredServer = serverMessages.filter(msg => !this.deletionQueue.includes(msg.id));
     try {
         const res = await fetch(`${API_BASE}/messages/${userId}`, {
             headers: authManager.getAuthHeaders()
         });
         if (res.ok) {
-            const serverMessages = await res.json();
+            const filteredServer = await res.json();
             // Создаём карту серверных сообщений по id
             const serverMap = new Map();
             for (const msg of serverMessages) {
@@ -257,33 +260,39 @@ class MessageManager {
         }
     }
     optimisticDeleteMessage(msgId) {
-    const msg = this.messages.find(m => m.id === msgId);
-    if (!msg) return;
-    // Помечаем как удалённое (не удаляем из массива)
-    msg._optimisticDelete = true;
-    this.renderMessages();
-    // Асинхронно удаляем на сервере
-    fetch(`${API_BASE}/messages/${msgId}`, {
-        method: 'DELETE',
-        headers: authManager.getAuthHeaders()
-    }).then(async res => {
-        if (res.ok) {
-            // Успешно: убираем из массива
-            this.messages = this.messages.filter(m => m.id !== msgId);
-            this.renderMessages();
-        } else {
-            // Ошибка: снимаем пометку удаления
-            msg._optimisticDelete = false;
-            this.renderMessages();
-            this.showToast('Не удалось удалить сообщение', 'error');
-        }
-    }).catch(() => {
-        msg._optimisticDelete = false;
+    if (this.deletionQueue.includes(msgId)) return;
+    this.deletionQueue.push(msgId);
+    // Оптимистично удаляем из массива
+    const idx = this.messages.findIndex(m => m.id === msgId);
+    if (idx !== -1) {
+        this.messages.splice(idx, 1);
         this.renderMessages();
-        this.showToast('Ошибка соединения', 'error');
-    });
     }
+    this.processDeletionQueue();
+}
 
+    async processDeletionQueue() {
+    if (this.isDeleting) return;
+    this.isDeleting = true;
+    while (this.deletionQueue.length > 0) {
+        const msgId = this.deletionQueue.shift();
+        try {
+            const res = await fetch(`${API_BASE}/messages/${msgId}`, {
+                method: 'DELETE',
+                headers: authManager.getAuthHeaders()
+            });
+            if (!res.ok) throw new Error();
+            // Успешно удалено – сообщение уже удалено из массива, ничего не делаем
+        } catch (err) {
+            console.error(`Failed to delete ${msgId}:`, err);
+            // Восстанавливаем сообщение, запросив последние данные с сервера
+            await this.loadMessages(this.currentConversation);
+            // Прерываем очередь, так как данные могли измениться
+            break;
+        }
+    }
+    this.isDeleting = false;
+}
     async optimisticEditMessage(msgId, oldContent) {
     const msg = this.messages.find(m => m.id === msgId);
     if (!msg) return;
