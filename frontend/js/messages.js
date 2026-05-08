@@ -125,59 +125,44 @@ class MessageManager {
 
     async loadMessages(userId) {
     if (!authManager.isAuthenticated()) return;
-    // Сохраняем текущие временные сообщения (is_temp === true) и сообщения с пометкой "оптимистично удалено"
-    const tempMessages = this.messages.filter(m => m.is_temp === true || m.optimisticDelete === true);
-    const filteredServer = serverMessages.filter(msg => !this.deletionQueue.includes(msg.id));
+    if (!userId) return;
+    // Сохраняем текущие временные сообщения (is_temp === true)
+    const tempMessages = this.messages.filter(m => m.is_temp === true);
     try {
         const res = await fetch(`${API_BASE}/messages/${userId}`, {
             headers: authManager.getAuthHeaders()
         });
         if (res.ok) {
-            const filteredServer = await res.json();
-            // Создаём карту серверных сообщений по id
+            const serverMessages = await res.json();
+            // Фильтруем серверные сообщения, исключая те, которые в очереди на удаление
+            const filteredServer = serverMessages.filter(msg => !this.deletionQueue.includes(msg.id));
+            // Создаём карту для быстрого поиска
             const serverMap = new Map();
-            for (const msg of serverMessages) {
+            for (const msg of filteredServer) {
                 serverMap.set(msg.id, msg);
             }
-            // Проходим по текущим сообщениям (включая временные)
-            const mergedMessages = [];
-            for (const localMsg of this.messages) {
-                // Если сообщение помечено как оптимистично удалённое – пропускаем
-                if (localMsg.optimisticDelete) continue;
-                // Если у локального сообщения есть реальный id и оно есть на сервере
-                if (!localMsg.is_temp && serverMap.has(localMsg.id)) {
-                    const serverMsg = serverMap.get(localMsg.id);
-                    // Если локальное сообщение было отредактировано оптимистично, 
-                    // то используем локальное содержимое (пока сервер не подтвердит)
-                    if (localMsg.optimisticEdit) {
-                        mergedMessages.push(localMsg);
-                    } else {
-                        mergedMessages.push(serverMsg);
-                    }
-                    serverMap.delete(localMsg.id);
-                } else if (!localMsg.is_temp && !serverMap.has(localMsg.id)) {
-                    // Сообщение есть локально, но не на сервере – скорее всего, удалено
-                    continue;
-                } else {
-                    // Временное сообщение (is_temp) – оставляем как есть
-                    mergedMessages.push(localMsg);
+            // Объединяем: сначала временные сообщения, затем серверные (кроме уже имеющихся)
+            const merged = [...tempMessages];
+            for (const msg of filteredServer) {
+                // Если сообщение с таким id уже есть во временных (но временные имеют is_temp=true, их id обычно начинается с 'temp_', так что конфликта нет)
+                if (!merged.some(m => m.id === msg.id && !m.is_temp)) {
+                    merged.push(msg);
                 }
             }
-            // Добавляем оставшиеся сообщения с сервера (новые)
-            for (const serverMsg of serverMap.values()) {
-                mergedMessages.push(serverMsg);
-            }
             // Сортируем по времени
-            mergedMessages.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
-            this.messages = mergedMessages;
+            merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            this.messages = merged;
             this.renderMessages();
             this.restoreVideoTimes();
             this.scrollToBottom();
         } else {
             this.showToast('Ошибка загрузки сообщений', 'error');
         }
-    } catch(e) { console.error(e); }
-                        }
+    } catch(e) {
+        console.error(e);
+        this.showToast('Ошибка загрузки сообщений', 'error');
+    }
+}
     
     renderMessages() {
         const visibleMessages = this.messages.filter(m => !m._optimisticDelete);
