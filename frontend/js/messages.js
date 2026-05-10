@@ -52,6 +52,64 @@ class MessageManager {
         setTimeout(() => toast.remove(), 4000);
     }
 
+    updateChatHeader() {
+    const header = document.getElementById('chatHeader');
+    if (!header) return;
+    if (this.currentConversation) {
+        const conv = this.conversations.find(c => c.user_id === this.currentConversation);
+        if (conv) {
+            header.innerHTML = `
+                <div class="user-info">
+                    <img src="${getAvatarUrl(conv.avatar_url)}" class="avatar">
+                    <div class="username">${this.escapeHtml(conv.username)}</div>
+                </div>
+            `;
+        } else {
+            header.innerHTML = '<div>Загрузка...</div>';
+        }
+    } else {
+        header.innerHTML = '<div>Выберите диалог</div>';
+    }
+    }
+
+    showMessageMenu(msgId, currentContent, event) {
+    const menu = document.createElement('div');
+    menu.className = 'custom-message-menu';
+    menu.innerHTML = `
+        <button id="menuEditBtn">✏️ Редактировать</button>
+        <button id="menuDeleteBtn">🗑️ Удалить</button>
+    `;
+    document.body.appendChild(menu);
+    const btn = event?.target;
+    if (btn) {
+        const rect = btn.getBoundingClientRect();
+        menu.style.top = `${rect.bottom + window.scrollY}px`;
+        menu.style.left = `${rect.left + window.scrollX - 80}px`;
+    } else {
+        menu.style.top = '50%';
+        menu.style.left = '50%';
+        menu.style.transform = 'translate(-50%, -50%)';
+    }
+    const close = () => menu.remove();
+    document.getElementById('menuEditBtn')?.addEventListener('click', () => {
+        this.optimisticEditMessage(msgId, currentContent);
+        close();
+    });
+    document.getElementById('menuDeleteBtn')?.addEventListener('click', () => {
+        this.optimisticDeleteMessage(msgId);
+        close();
+    });
+    setTimeout(() => {
+        const onClickOutside = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', onClickOutside);
+            }
+        };
+        document.addEventListener('click', onClickOutside);
+    }, 0);
+    }
+
     formatTimeYakutsk(timestamp) {
         if (!timestamp) return '';
         const date = new Date(timestamp);
@@ -269,14 +327,14 @@ class MessageManager {
             `;
         }).join('');
 
-        document.querySelectorAll('.msg-media-video').forEach(video => {
-            const wrapper = video.closest('.video-wrapper');
-            const loader = wrapper?.querySelector('.video-loading');
-            if (loader) {
-                const hideLoader = () => loader.style.display = 'none';
-                video.addEventListener('canplaythrough', hideLoader, { once: true });
-                if (video.readyState >= 3) hideLoader();
-            }
+        document.querySelectorAll('.message-menu-btn').forEach(btn => {
+    btn.onclick = (e) => {
+        e.stopPropagation();
+        const msgId = btn.dataset.id;
+        const content = btn.dataset.content;
+        this.showMessageMenu(msgId, content, e);
+    };
+});
             const playHandler = () => { this.isVideoPlaying = true; };
             const pauseHandler = () => { this.isVideoPlaying = false; };
             video.removeEventListener('play', playHandler);
@@ -332,6 +390,7 @@ class MessageManager {
         this.currentConversation = userId;
         await this.loadMessages(userId);
         this.renderConversations();
+        this.updateChatHeader();
         const input = document.getElementById('messageInput');
         const btn = document.getElementById('sendMsgBtn');
         if (input && btn) {
