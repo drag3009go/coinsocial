@@ -1,6 +1,6 @@
 class MessageManager {
     constructor() {
-        this.videoTimes = new Map();   
+        this.videoTimes = new Map();
         this.isVideoPlaying = false;
         this.currentConversation = null;
         this.conversations = [];
@@ -8,8 +8,11 @@ class MessageManager {
         this.autoRefreshInterval = null;
         this.attachedFiles = [];
         this.optimisticUpdates = new Map();
-        this.deletionQueue = [];      // очередь ID сообщений на удаление
-        this.isDeleting = false;      // флаг выполнения удаления
+        this.deletionQueue = [];
+        this.isDeleting = false;
+        // Для режима выбора сообщений
+        this.selectionMode = false;
+        this.selectedMessages = new Set();
     }
 
     async init() {
@@ -29,6 +32,33 @@ class MessageManager {
         }
     }
 
+    scrollToBottom() {
+        const container = document.getElementById('chatMessages');
+        if (container) container.scrollTop = container.scrollHeight;
+    }
+
+    showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.textContent = message;
+        toast.style.position = 'fixed';
+        toast.style.bottom = '20px';
+        toast.style.left = '20px';
+        toast.style.backgroundColor = type === 'error' ? '#d00' : '#2c3e66';
+        toast.style.color = '#fff';
+        toast.style.padding = '10px 20px';
+        toast.style.borderRadius = '8px';
+        toast.style.zIndex = '10000';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
+    formatTimeYakutsk(timestamp) {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        const yakutskDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+        return yakutskDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    }
+
     async handleFiles(event) {
         const files = Array.from(event.target.files);
         if (files.length > 3) {
@@ -40,36 +70,33 @@ class MessageManager {
         event.target.value = '';
     }
 
-    // Сохраняет текущее время воспроизведения всех видео
-saveVideoTimes() {
-    if (!this.videoTimes) this.videoTimes = new Map();
-    this.videoTimes.clear();
-    document.querySelectorAll('.msg-media-video').forEach(video => {
-        const videoId = video.getAttribute('data-video-id');
-        if (videoId && !video.paused) {
-            this.videoTimes.set(videoId, video.currentTime);
-        }
-    });
-}
-
-// Восстанавливает позицию видео после перерисовки
-restoreVideoTimes() {
-    setTimeout(() => {
-        this.videoTimes.forEach((time, videoId) => {
-            const video = document.querySelector(`.msg-media-video[data-video-id="${videoId}"]`);
-            if (video) {
-                if (video.readyState >= 2) {
-                    video.currentTime = time;
-                } else {
-                    video.addEventListener('loadedmetadata', () => {
-                        video.currentTime = time;
-                    }, { once: true });
-                }
+    saveVideoTimes() {
+        if (!this.videoTimes) this.videoTimes = new Map();
+        this.videoTimes.clear();
+        document.querySelectorAll('.msg-media-video').forEach(video => {
+            const videoId = video.getAttribute('data-video-id');
+            if (videoId && !video.paused) {
+                this.videoTimes.set(videoId, video.currentTime);
             }
         });
-    }, 50);
-}
-    
+    }
+
+    restoreVideoTimes() {
+        setTimeout(() => {
+            this.videoTimes.forEach((time, videoId) => {
+                const video = document.querySelector(`.msg-media-video[data-video-id="${videoId}"]`);
+                if (video) {
+                    if (video.readyState >= 2) {
+                        video.currentTime = time;
+                    } else {
+                        video.addEventListener('loadedmetadata', () => {
+                            video.currentTime = time;
+                        }, { once: true });
+                    }
+                }
+            });
+        }, 50);
+    }
 
     renderMediaPreview() {
         const container = document.getElementById('mediaPreviewList');
@@ -105,7 +132,6 @@ restoreVideoTimes() {
         const sendBtn = document.getElementById('sendMsgBtn');
         sendBtn.disabled = true;
 
-        // Загружаем файлы
         let mediaUrls = [];
         for (const file of this.attachedFiles) {
             const formData = new FormData();
@@ -128,7 +154,6 @@ restoreVideoTimes() {
             }
         }
 
-        // Отправляем сообщение
         try {
             const res = await fetch(`${API_BASE}/messages/send`, {
                 method: 'POST',
@@ -157,127 +182,110 @@ restoreVideoTimes() {
     }
 
     async loadMessages(userId) {
-    if (!authManager.isAuthenticated() || !userId) return;
+        if (!authManager.isAuthenticated() || !userId) return;
+        this.saveVideoTimes();
 
-    // Сохраняем текущие позиции видео перед перезагрузкой
-    this.saveVideoTimes();
-
-    try {
-        const response = await fetch(`${API_BASE}/messages/${userId}`, {
-            headers: authManager.getAuthHeaders()
-        });
-        if (response.ok) {
-            const serverMessages = await response.json();
-
-            // Фильтруем сообщения, которые уже в очереди на удаление
-            const filteredServer = this.deletionQueue
-                ? serverMessages.filter(msg => !this.deletionQueue.includes(msg.id))
-                : serverMessages;
-
-            // Временные сообщения (ещё не подтверждённые)
-            const tempMessages = this.messages.filter(m => m.is_temp === true);
-
-            // Сливаем: временные + новые с сервера (без дубликатов)
-            const merged = [...tempMessages];
-            for (const msg of filteredServer) {
-                if (!merged.some(m => m.id === msg.id)) {
-                    merged.push(msg);
+        try {
+            const response = await fetch(`${API_BASE}/messages/${userId}`, {
+                headers: authManager.getAuthHeaders()
+            });
+            if (response.ok) {
+                const serverMessages = await response.json();
+                const filteredServer = this.deletionQueue?.length
+                    ? serverMessages.filter(msg => !this.deletionQueue.includes(msg.id))
+                    : serverMessages;
+                const tempMessages = this.messages.filter(m => m.is_temp === true);
+                const merged = [...tempMessages];
+                for (const msg of filteredServer) {
+                    if (!merged.some(m => m.id === msg.id)) {
+                        merged.push(msg);
+                    }
                 }
+                merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                this.messages = merged;
+                this.renderMessages();
+                this.restoreVideoTimes();
+                this.scrollToBottom();
+            } else {
+                this.showToast('Ошибка загрузки сообщений', 'error');
             }
-
-            // Сортируем по времени
-            merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-            this.messages = merged;
-            this.renderMessages();
-
-            // Восстанавливаем позиции видео после рендеринга
-            this.restoreVideoTimes();
-            this.scrollToBottom();
-        } else {
+        } catch (error) {
+            console.error('loadMessages error:', error);
             this.showToast('Ошибка загрузки сообщений', 'error');
         }
-    } catch (error) {
-        console.error('loadMessages error:', error);
-        this.showToast('Ошибка загрузки сообщений', 'error');
-    }
     }
 
     renderMessages() {
-    const container = document.getElementById('chatMessages');
-    if (!container) return;
-    const currentUser = authManager.getCurrentUser();
-    if (!currentUser) return;
+        const container = document.getElementById('chatMessages');
+        if (!container) return;
+        const currentUser = authManager.getCurrentUser();
+        if (!currentUser) return;
 
-    if (this.messages.length === 0 && this.currentConversation) {
-        container.innerHTML = '<div class="loading">Нет сообщений. Напишите что-нибудь!</div>';
-        return;
-    } else if (!this.currentConversation) {
-        container.innerHTML = '<div class="loading">Выберите диалог для начала общения</div>';
-        return;
-    }
-
-    container.innerHTML = this.messages.map(msg => {
-        const isMy = msg.sender_id === currentUser.id;
-        let mediaHtml = '';
-        if (msg.media_urls && Array.isArray(msg.media_urls) && msg.media_urls.length) {
-            mediaHtml = '<div class="message-media">' + msg.media_urls.map((url, idx) => {
-                const videoId = `${msg.id}_${idx}`;
-                const isVideo = url && (url.includes('.mp4') || url.includes('.webm') || url.includes('.ogg'));
-                if (isVideo) {
-                    return `
-                        <div class="video-wrapper">
-                            <video src="${url}" controls class="msg-media-video" preload="metadata" data-video-id="${videoId}"></video>
-                            <div class="video-loading" style="display: flex;"></div>
-                        </div>
-                    `;
-                } else if (url) {
-                    return `<img src="${url}" class="msg-media-img" loading="lazy">`;
-                }
-                return '';
-            }).join('') + '</div>';
+        if (this.messages.length === 0 && this.currentConversation) {
+            container.innerHTML = '<div class="loading">Нет сообщений. Напишите что-нибудь!</div>';
+            return;
+        } else if (!this.currentConversation) {
+            container.innerHTML = '<div class="loading">Выберите диалог для начала общения</div>';
+            return;
         }
-        const sending = msg.is_temp && !msg.error ? '<div class="sending">⏳ Отправка...</div>' : '';
-        const error = msg.error ? '<div class="error-badge">⚠️ Ошибка</div>' : '';
-        const check = (this.selectionMode && isMy) ? `<input type="checkbox" class="msg-checkbox" data-id="${msg.id}" ${this.selectedMessages.has(msg.id) ? 'checked' : ''}>` : '';
-        const menuBtn = (isMy && !msg.is_temp && !this.selectionMode) ? `<button class="message-menu-btn" data-id="${msg.id}" data-content="${escapeHtml(msg.content)}">⋮</button>` : '';
 
-        return `
-            <div class="message ${isMy ? 'sent' : 'received'} ${msg.error ? 'error' : ''}" data-msg-id="${msg.id}">
-                <div class="message-check">${check}</div>
-                <div class="message-content">${escapeHtml(msg.content)}</div>
-                ${mediaHtml}
-                <div class="message-meta">
-                    <span class="message-time">${this.formatTimeYakutsk(msg.timestamp)}</span>
-                    ${menuBtn}
+        container.innerHTML = this.messages.map(msg => {
+            const isMy = msg.sender_id === currentUser.id;
+            let mediaHtml = '';
+            if (msg.media_urls && Array.isArray(msg.media_urls) && msg.media_urls.length) {
+                mediaHtml = '<div class="message-media">' + msg.media_urls.map((url, idx) => {
+                    const videoId = `${msg.id}_${idx}`;
+                    const isVideo = url && (url.includes('.mp4') || url.includes('.webm') || url.includes('.ogg'));
+                    if (isVideo) {
+                        return `
+                            <div class="video-wrapper">
+                                <video src="${url}" controls class="msg-media-video" preload="metadata" data-video-id="${videoId}"></video>
+                                <div class="video-loading" style="display: flex;"></div>
+                            </div>
+                        `;
+                    } else if (url) {
+                        return `<img src="${url}" class="msg-media-img" loading="lazy">`;
+                    }
+                    return '';
+                }).join('') + '</div>';
+            }
+            const sending = msg.is_temp && !msg.error ? '<div class="sending">⏳ Отправка...</div>' : '';
+            const error = msg.error ? '<div class="error-badge">⚠️ Ошибка</div>' : '';
+            const check = (this.selectionMode && isMy) ? `<input type="checkbox" class="msg-checkbox" data-id="${msg.id}" ${this.selectedMessages.has(msg.id) ? 'checked' : ''}>` : '';
+            const menuBtn = (isMy && !msg.is_temp && !this.selectionMode) ? `<button class="message-menu-btn" data-id="${msg.id}" data-content="${this.escapeHtml(msg.content)}">⋮</button>` : '';
+
+            return `
+                <div class="message ${isMy ? 'sent' : 'received'} ${msg.error ? 'error' : ''}" data-msg-id="${msg.id}">
+                    <div class="message-check">${check}</div>
+                    <div class="message-content">${this.escapeHtml(msg.content)}</div>
+                    ${mediaHtml}
+                    <div class="message-meta">
+                        <span class="message-time">${this.formatTimeYakutsk(msg.timestamp)}</span>
+                        ${menuBtn}
+                    </div>
+                    ${sending}
+                    ${error}
                 </div>
-                ${sending}
-                ${error}
-            </div>
-        `;
-    }).join('');
+            `;
+        }).join('');
 
-    // Обработчики для видео (индикатор загрузки, флаг isVideoPlaying)
-    document.querySelectorAll('.msg-media-video').forEach(video => {
-        const wrapper = video.closest('.video-wrapper');
-        const loader = wrapper?.querySelector('.video-loading');
-        if (loader) {
-            const hideLoader = () => loader.style.display = 'none';
-            video.addEventListener('canplaythrough', hideLoader, { once: true });
-            if (video.readyState >= 3) hideLoader();
-        }
-        // Устанавливаем флаг isVideoPlaying для автообновления
-        const playHandler = () => { this.isVideoPlaying = true; };
-        const pauseHandler = () => { this.isVideoPlaying = false; };
-        video.removeEventListener('play', playHandler);
-        video.removeEventListener('pause', pauseHandler);
-        video.addEventListener('play', playHandler);
-        video.addEventListener('pause', pauseHandler);
-        video.addEventListener('ended', pauseHandler);
-    });
+        document.querySelectorAll('.msg-media-video').forEach(video => {
+            const wrapper = video.closest('.video-wrapper');
+            const loader = wrapper?.querySelector('.video-loading');
+            if (loader) {
+                const hideLoader = () => loader.style.display = 'none';
+                video.addEventListener('canplaythrough', hideLoader, { once: true });
+                if (video.readyState >= 3) hideLoader();
+            }
+            const playHandler = () => { this.isVideoPlaying = true; };
+            const pauseHandler = () => { this.isVideoPlaying = false; };
+            video.removeEventListener('play', playHandler);
+            video.removeEventListener('pause', pauseHandler);
+            video.addEventListener('play', playHandler);
+            video.addEventListener('pause', pauseHandler);
+            video.addEventListener('ended', pauseHandler);
+        });
     }
-    
-    
 
     async loadConversations() {
         try {
@@ -287,6 +295,8 @@ restoreVideoTimes() {
             if (res.ok) {
                 this.conversations = await res.json();
                 this.renderConversations();
+            } else {
+                console.error('Failed to load conversations', res.status);
             }
         } catch (err) {
             console.error(err);
@@ -330,83 +340,77 @@ restoreVideoTimes() {
             input.placeholder = "Введите сообщение...";
         }
     }
+
     optimisticDeleteMessage(msgId) {
-    if (this.deletionQueue.includes(msgId)) return;
-    this.deletionQueue.push(msgId);
-    // Оптимистично удаляем из массива
-    const idx = this.messages.findIndex(m => m.id === msgId);
-    if (idx !== -1) {
-        this.messages.splice(idx, 1);
-        this.renderMessages();
+        if (this.deletionQueue.includes(msgId)) return;
+        this.deletionQueue.push(msgId);
+        const idx = this.messages.findIndex(m => m.id === msgId);
+        if (idx !== -1) {
+            this.messages.splice(idx, 1);
+            this.renderMessages();
+        }
+        this.processDeletionQueue();
     }
-    this.processDeletionQueue();
-}
 
     async processDeletionQueue() {
-    if (this.isDeleting) return;
-    this.isDeleting = true;
-    while (this.deletionQueue.length > 0) {
-        const msgId = this.deletionQueue.shift();
+        if (this.isDeleting) return;
+        this.isDeleting = true;
+        while (this.deletionQueue.length > 0) {
+            const msgId = this.deletionQueue.shift();
+            try {
+                const res = await fetch(`${API_BASE}/messages/${msgId}`, {
+                    method: 'DELETE',
+                    headers: authManager.getAuthHeaders()
+                });
+                if (!res.ok) throw new Error();
+            } catch (err) {
+                console.error(`Failed to delete ${msgId}:`, err);
+                await this.loadMessages(this.currentConversation);
+                break;
+            }
+        }
+        this.isDeleting = false;
+    }
+
+    async optimisticEditMessage(msgId, oldContent) {
+        const msg = this.messages.find(m => m.id === msgId);
+        if (!msg) return;
+        const newContent = prompt('Введите новый текст:', oldContent);
+        if (!newContent || newContent === oldContent) return;
+        msg._originalContent = msg.content;
+        msg.content = newContent;
+        msg._optimisticEdit = true;
+        this.renderMessages();
         try {
             const res = await fetch(`${API_BASE}/messages/${msgId}`, {
-                method: 'DELETE',
-                headers: authManager.getAuthHeaders()
+                method: 'PUT',
+                headers: authManager.getAuthHeaders(),
+                body: JSON.stringify({ content: newContent })
             });
-            if (!res.ok) throw new Error();
-            // Успешно удалено – сообщение уже удалено из массива, ничего не делаем
-        } catch (err) {
-            console.error(`Failed to delete ${msgId}:`, err);
-            // Восстанавливаем сообщение, запросив последние данные с сервера
-            await this.loadMessages(this.currentConversation);
-            // Прерываем очередь, так как данные могли измениться
-            break;
-        }
-    }
-    this.isDeleting = false;
-}
-    async optimisticEditMessage(msgId, oldContent) {
-    const msg = this.messages.find(m => m.id === msgId);
-    if (!msg) return;
-    const newContent = prompt('Введите новый текст:', oldContent);
-    if (!newContent || newContent === oldContent) return;
-    // Сохраняем оригинал и флаг
-    msg._originalContent = msg.content;
-    msg.content = newContent;
-    msg._optimisticEdit = true;
-    this.renderMessages();
-    try {
-        const res = await fetch(`${API_BASE}/messages/${msgId}`, {
-            method: 'PUT',
-            headers: authManager.getAuthHeaders(),
-            body: JSON.stringify({ content: newContent })
-        });
-        if (res.ok) {
+            if (res.ok) {
+                delete msg._optimisticEdit;
+                delete msg._originalContent;
+                this.renderMessages();
+            } else {
+                throw new Error();
+            }
+        } catch {
+            msg.content = msg._originalContent;
             delete msg._optimisticEdit;
             delete msg._originalContent;
             this.renderMessages();
-        } else {
-            throw new Error();
+            this.showToast('Не удалось изменить сообщение', 'error');
         }
-    } catch {
-        // Откат
-        msg.content = msg._originalContent;
-        delete msg._optimisticEdit;
-        delete msg._originalContent;
-        this.renderMessages();
-        this.showToast('Не удалось изменить сообщение', 'error');
     }
-    }
-
-    
 
     startAutoRefresh() {
-    if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-    this.autoRefreshInterval = setInterval(() => {
-        if (this.isVideoPlaying) return;
-        if (this.currentConversation) {
-            this.loadMessages(this.currentConversation);
-        }
-    }, 15000); // 15 секунд
+        if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+        this.autoRefreshInterval = setInterval(() => {
+            if (this.isVideoPlaying) return;
+            if (this.currentConversation) {
+                this.loadMessages(this.currentConversation);
+            }
+        }, 15000);
     }
 
     escapeHtml(str) {
