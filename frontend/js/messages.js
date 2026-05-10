@@ -1,6 +1,7 @@
 class MessageManager {
     constructor() {
         this.videoTimes = new Map();   
+        this.isVideoPlaying = false;
         this.currentConversation = null;
         this.conversations = [];
         this.messages = [];
@@ -399,12 +400,13 @@ restoreVideoTimes() {
     
 
     startAutoRefresh() {
-        if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-        const refresh = () => {
-        if (this.isVideoPlaying) return; // не обновляем, пока видео играет
-        this.autoRefreshInterval = setInterval(() => {
-            if (this.currentConversation) this.loadMessages(this.currentConversation);
-        }, 5000);
+    if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+    this.autoRefreshInterval = setInterval(() => {
+        if (this.isVideoPlaying) return;
+        if (this.currentConversation) {
+            this.loadMessages(this.currentConversation);
+        }
+    }, 15000); // 15 секунд
     }
 
     escapeHtml(str) {
