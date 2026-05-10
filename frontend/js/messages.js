@@ -1,5 +1,6 @@
 class MessageManager {
     constructor() {
+        this.videoTimes = new Map();   
         this.currentConversation = null;
         this.conversations = [];
         this.messages = [];
@@ -37,6 +38,37 @@ class MessageManager {
         this.renderMediaPreview();
         event.target.value = '';
     }
+
+    // Сохраняет текущее время воспроизведения всех видео
+saveVideoTimes() {
+    if (!this.videoTimes) this.videoTimes = new Map();
+    this.videoTimes.clear();
+    document.querySelectorAll('.msg-media-video').forEach(video => {
+        const videoId = video.getAttribute('data-video-id');
+        if (videoId && !video.paused) {
+            this.videoTimes.set(videoId, video.currentTime);
+        }
+    });
+}
+
+// Восстанавливает позицию видео после перерисовки
+restoreVideoTimes() {
+    setTimeout(() => {
+        this.videoTimes.forEach((time, videoId) => {
+            const video = document.querySelector(`.msg-media-video[data-video-id="${videoId}"]`);
+            if (video) {
+                if (video.readyState >= 2) {
+                    video.currentTime = time;
+                } else {
+                    video.addEventListener('loadedmetadata', () => {
+                        video.currentTime = time;
+                    }, { once: true });
+                }
+            }
+        });
+    }, 50);
+}
+    
 
     renderMediaPreview() {
         const container = document.getElementById('mediaPreviewList');
@@ -122,27 +154,29 @@ class MessageManager {
             input.focus();
         }
     }
-async loadMessages(userId) {
-    if (!authManager.isAuthenticated()) return;
-    if (!userId) return;
+
+    async loadMessages(userId) {
+    if (!authManager.isAuthenticated() || !userId) return;
+
+    // Сохраняем текущие позиции видео перед перезагрузкой
+    this.saveVideoTimes();
 
     try {
         const response = await fetch(`${API_BASE}/messages/${userId}`, {
             headers: authManager.getAuthHeaders()
         });
         if (response.ok) {
-            // ВАЖНО: получаем массив сообщений от сервера
             const serverMessages = await response.json();
 
-            // Фильтруем сообщения, которые уже в очереди на удаление (если есть deletionQueue)
+            // Фильтруем сообщения, которые уже в очереди на удаление
             const filteredServer = this.deletionQueue
                 ? serverMessages.filter(msg => !this.deletionQueue.includes(msg.id))
                 : serverMessages;
 
-            // Сохраняем временные сообщения (is_temp = true), если они есть
+            // Временные сообщения (ещё не подтверждённые)
             const tempMessages = this.messages.filter(m => m.is_temp === true);
 
-            // Объединяем: временные + отфильтрованные с сервера, избегая дубликатов
+            // Сливаем: временные + новые с сервера (без дубликатов)
             const merged = [...tempMessages];
             for (const msg of filteredServer) {
                 if (!merged.some(m => m.id === msg.id)) {
@@ -155,7 +189,9 @@ async loadMessages(userId) {
 
             this.messages = merged;
             this.renderMessages();
-            if (this.restoreVideoTimes) this.restoreVideoTimes(); // если есть такой метод
+
+            // Восстанавливаем позиции видео после рендеринга
+            this.restoreVideoTimes();
             this.scrollToBottom();
         } else {
             this.showToast('Ошибка загрузки сообщений', 'error');
@@ -164,37 +200,83 @@ async loadMessages(userId) {
         console.error('loadMessages error:', error);
         this.showToast('Ошибка загрузки сообщений', 'error');
     }
-}
-    
-    
-    renderMessages() {
-        const visibleMessages = this.messages.filter(m => !m._optimisticDelete);
-        const container = document.getElementById('chatMessages');
-        if (!container) return;
-        const currentUser = authManager.getCurrentUser();
-        if (!currentUser) return;
-
-        container.innerHTML = this.messages.map(msg => {
-            const isMy = msg.sender_id === currentUser.id;
-            let mediaHtml = '';
-            if (msg.media_urls && msg.media_urls.length) {
-                mediaHtml = '<div class="message-media">' + msg.media_urls.map(url => {
-                    if (url.match(/\.(mp4|webm|ogg)/i))
-                        return `<video src="${url}" controls class="msg-media-video"></video>`;
-                    else
-                        return `<img src="${url}" class="msg-media-img" loading="lazy">`;
-                }).join('') + '</div>';
-            }
-            return `
-                <div class="message ${isMy ? 'sent' : 'received'}">
-                    <div class="message-content">${this.escapeHtml(msg.content)}</div>
-                    ${mediaHtml}
-                    <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
-                </div>
-            `;
-        }).join('');
-        container.scrollTop = container.scrollHeight;
     }
+
+    renderMessages() {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    const currentUser = authManager.getCurrentUser();
+    if (!currentUser) return;
+
+    if (this.messages.length === 0 && this.currentConversation) {
+        container.innerHTML = '<div class="loading">Нет сообщений. Напишите что-нибудь!</div>';
+        return;
+    } else if (!this.currentConversation) {
+        container.innerHTML = '<div class="loading">Выберите диалог для начала общения</div>';
+        return;
+    }
+
+    container.innerHTML = this.messages.map(msg => {
+        const isMy = msg.sender_id === currentUser.id;
+        let mediaHtml = '';
+        if (msg.media_urls && Array.isArray(msg.media_urls) && msg.media_urls.length) {
+            mediaHtml = '<div class="message-media">' + msg.media_urls.map((url, idx) => {
+                const videoId = `${msg.id}_${idx}`;
+                const isVideo = url && (url.includes('.mp4') || url.includes('.webm') || url.includes('.ogg'));
+                if (isVideo) {
+                    return `
+                        <div class="video-wrapper">
+                            <video src="${url}" controls class="msg-media-video" preload="metadata" data-video-id="${videoId}"></video>
+                            <div class="video-loading" style="display: flex;"></div>
+                        </div>
+                    `;
+                } else if (url) {
+                    return `<img src="${url}" class="msg-media-img" loading="lazy">`;
+                }
+                return '';
+            }).join('') + '</div>';
+        }
+        const sending = msg.is_temp && !msg.error ? '<div class="sending">⏳ Отправка...</div>' : '';
+        const error = msg.error ? '<div class="error-badge">⚠️ Ошибка</div>' : '';
+        const check = (this.selectionMode && isMy) ? `<input type="checkbox" class="msg-checkbox" data-id="${msg.id}" ${this.selectedMessages.has(msg.id) ? 'checked' : ''}>` : '';
+        const menuBtn = (isMy && !msg.is_temp && !this.selectionMode) ? `<button class="message-menu-btn" data-id="${msg.id}" data-content="${escapeHtml(msg.content)}">⋮</button>` : '';
+
+        return `
+            <div class="message ${isMy ? 'sent' : 'received'} ${msg.error ? 'error' : ''}" data-msg-id="${msg.id}">
+                <div class="message-check">${check}</div>
+                <div class="message-content">${escapeHtml(msg.content)}</div>
+                ${mediaHtml}
+                <div class="message-meta">
+                    <span class="message-time">${this.formatTimeYakutsk(msg.timestamp)}</span>
+                    ${menuBtn}
+                </div>
+                ${sending}
+                ${error}
+            </div>
+        `;
+    }).join('');
+
+    // Обработчики для видео (индикатор загрузки, флаг isVideoPlaying)
+    document.querySelectorAll('.msg-media-video').forEach(video => {
+        const wrapper = video.closest('.video-wrapper');
+        const loader = wrapper?.querySelector('.video-loading');
+        if (loader) {
+            const hideLoader = () => loader.style.display = 'none';
+            video.addEventListener('canplaythrough', hideLoader, { once: true });
+            if (video.readyState >= 3) hideLoader();
+        }
+        // Устанавливаем флаг isVideoPlaying для автообновления
+        const playHandler = () => { this.isVideoPlaying = true; };
+        const pauseHandler = () => { this.isVideoPlaying = false; };
+        video.removeEventListener('play', playHandler);
+        video.removeEventListener('pause', pauseHandler);
+        video.addEventListener('play', playHandler);
+        video.addEventListener('pause', pauseHandler);
+        video.addEventListener('ended', pauseHandler);
+    });
+    }
+    
+    
 
     async loadConversations() {
         try {
@@ -318,6 +400,8 @@ async loadMessages(userId) {
 
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+        const refresh = () => {
+        if (this.isVideoPlaying) return; // не обновляем, пока видео играет
         this.autoRefreshInterval = setInterval(() => {
             if (this.currentConversation) this.loadMessages(this.currentConversation);
         }, 5000);
