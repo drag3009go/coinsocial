@@ -122,47 +122,50 @@ class MessageManager {
             input.focus();
         }
     }
-
-    async loadMessages(userId) {
+async loadMessages(userId) {
     if (!authManager.isAuthenticated()) return;
     if (!userId) return;
-    // Сохраняем текущие временные сообщения (is_temp === true)
-    const tempMessages = this.messages.filter(m => m.is_temp === true);
+
     try {
-        const res = await fetch(`${API_BASE}/messages/${userId}`, {
+        const response = await fetch(`${API_BASE}/messages/${userId}`, {
             headers: authManager.getAuthHeaders()
         });
-        if (res.ok) {
-            const serverMessages = await res.json();
-            // Фильтруем серверные сообщения, исключая те, которые в очереди на удаление
-            const filteredServer = serverMessages.filter(msg => !this.deletionQueue.includes(msg.id));
-            // Создаём карту для быстрого поиска
-            const serverMap = new Map();
-            for (const msg of filteredServer) {
-                serverMap.set(msg.id, msg);
-            }
-            // Объединяем: сначала временные сообщения, затем серверные (кроме уже имеющихся)
+        if (response.ok) {
+            // ВАЖНО: получаем массив сообщений от сервера
+            const serverMessages = await response.json();
+
+            // Фильтруем сообщения, которые уже в очереди на удаление (если есть deletionQueue)
+            const filteredServer = this.deletionQueue
+                ? serverMessages.filter(msg => !this.deletionQueue.includes(msg.id))
+                : serverMessages;
+
+            // Сохраняем временные сообщения (is_temp = true), если они есть
+            const tempMessages = this.messages.filter(m => m.is_temp === true);
+
+            // Объединяем: временные + отфильтрованные с сервера, избегая дубликатов
             const merged = [...tempMessages];
             for (const msg of filteredServer) {
-                // Если сообщение с таким id уже есть во временных (но временные имеют is_temp=true, их id обычно начинается с 'temp_', так что конфликта нет)
-                if (!merged.some(m => m.id === msg.id && !m.is_temp)) {
+                if (!merged.some(m => m.id === msg.id)) {
                     merged.push(msg);
                 }
             }
+
             // Сортируем по времени
             merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
             this.messages = merged;
             this.renderMessages();
-            this.restoreVideoTimes();
+            if (this.restoreVideoTimes) this.restoreVideoTimes(); // если есть такой метод
             this.scrollToBottom();
         } else {
             this.showToast('Ошибка загрузки сообщений', 'error');
         }
-    } catch(e) {
-        console.error(e);
+    } catch (error) {
+        console.error('loadMessages error:', error);
         this.showToast('Ошибка загрузки сообщений', 'error');
     }
 }
+    
     
     renderMessages() {
         const visibleMessages = this.messages.filter(m => !m._optimisticDelete);
